@@ -7,20 +7,12 @@ module Ctl.Internal.QueryM.Kupo
   , isTxConfirmed
   , isTxConfirmedAff
   , utxosAt
+  , utxosAtScriptHash
   ) where
 
 import Prelude
 
-import Aeson
-  ( class DecodeAeson
-  , Aeson
-  , JsonDecodeError(TypeMismatch)
-  , decodeAeson
-  , getField
-  , getFieldOptional
-  , getFieldOptional'
-  , isNull
-  )
+import Aeson (class DecodeAeson, Aeson, JsonDecodeError(TypeMismatch), decodeAeson, getField, getFieldOptional, getFieldOptional', isNull)
 import Affjax (Error, Response, defaultRequest, request) as Affjax
 import Affjax.ResponseFormat (string) as Affjax.ResponseFormat
 import Affjax.StatusCode (StatusCode(StatusCode))
@@ -31,40 +23,16 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except.Trans (ExceptT(ExceptT), except, runExceptT)
 import Control.Monad.Reader.Class (asks)
 import Control.Parallel (parTraverse)
-import Ctl.Internal.Cardano.Types.ScriptRef
-  ( ScriptRef(NativeScriptRef, PlutusScriptRef)
-  )
-import Ctl.Internal.Cardano.Types.Transaction
-  ( TransactionOutput(TransactionOutput)
-  , UtxoMap
-  )
-import Ctl.Internal.Cardano.Types.Value
-  ( NonAdaAsset
-  , Value
-  , mkCurrencySymbol
-  , mkSingletonNonAdaAsset
-  , mkValue
-  )
-import Ctl.Internal.Contract.QueryHandle.Error
-  ( GetTxMetadataError
-      ( GetTxMetadataClientError
-      , GetTxMetadataTxNotFoundError
-      , GetTxMetadataMetadataEmptyOrMissingError
-      )
-  )
+import Ctl.Internal.Cardano.Types.ScriptRef (ScriptRef(NativeScriptRef, PlutusScriptRef))
+import Ctl.Internal.Cardano.Types.Transaction (TransactionOutput(TransactionOutput), UtxoMap)
+import Ctl.Internal.Cardano.Types.Value (NonAdaAsset, Value, mkCurrencySymbol, mkSingletonNonAdaAsset, mkValue)
+import Ctl.Internal.Contract.QueryHandle.Error (GetTxMetadataError(GetTxMetadataClientError, GetTxMetadataTxNotFoundError, GetTxMetadataMetadataEmptyOrMissingError))
 import Ctl.Internal.Deserialization.FromBytes (fromBytes)
 import Ctl.Internal.Deserialization.NativeScript (decodeNativeScript)
 import Ctl.Internal.Deserialization.PlutusData (deserializeData)
-import Ctl.Internal.Deserialization.Transaction
-  ( convertGeneralTransactionMetadata
-  )
+import Ctl.Internal.Deserialization.Transaction (convertGeneralTransactionMetadata)
 import Ctl.Internal.QueryM (QueryM, handleAffjaxResponse)
-import Ctl.Internal.Serialization.Address
-  ( Address
-  , Slot
-  , addressBech32
-  , addressFromBech32
-  )
+import Ctl.Internal.Serialization.Address (Address, Slot, addressBech32, addressFromBech32)
 import Ctl.Internal.Serialization.Hash (ScriptHash, scriptHashToBytes)
 import Ctl.Internal.ServerConfig (ServerConfig, mkHttpUrl)
 import Ctl.Internal.Service.Error (ClientError(ClientOtherError))
@@ -73,16 +41,11 @@ import Ctl.Internal.Types.BigNum (toString) as BigNum
 import Ctl.Internal.Types.ByteArray (byteArrayToHex, hexToByteArray)
 import Ctl.Internal.Types.CborBytes (CborBytes, hexToCborBytes)
 import Ctl.Internal.Types.Datum (DataHash(DataHash), Datum)
-import Ctl.Internal.Types.OutputDatum
-  ( OutputDatum(NoOutputDatum, OutputDatumHash, OutputDatum)
-  )
+import Ctl.Internal.Types.OutputDatum (OutputDatum(NoOutputDatum, OutputDatumHash, OutputDatum))
 import Ctl.Internal.Types.RawBytes (rawBytesToHex)
 import Ctl.Internal.Types.Scripts (plutusV1Script, plutusV2Script)
 import Ctl.Internal.Types.TokenName (mkTokenName)
-import Ctl.Internal.Types.Transaction
-  ( TransactionHash(TransactionHash)
-  , TransactionInput(TransactionInput)
-  )
+import Ctl.Internal.Types.Transaction (TransactionHash(TransactionHash), TransactionInput(TransactionInput))
 import Ctl.Internal.Types.TransactionMetadata (GeneralTransactionMetadata)
 import Data.Array (uncons)
 import Data.Array as Array
@@ -116,6 +79,12 @@ import Foreign.Object (toUnfoldable) as Object
 utxosAt :: Address -> QueryM (Either ClientError UtxoMap)
 utxosAt address = runExceptT do
   let endpoint = "/matches/" <> addressBech32 address <> "?unspent"
+  kupoUtxoMap <- ExceptT $ handleAffjaxResponse <$> kupoGetRequest endpoint
+  ExceptT $ resolveKupoUtxoMap kupoUtxoMap
+
+utxosAtScriptHash :: ScriptHash -> QueryM (Either ClientError UtxoMap)
+utxosAtScriptHash scriptHash = runExceptT do
+  let endpoint = "/matches/" <> rawBytesToHex (scriptHashToBytes scriptHash) <> "/*" <> "?unspent"
   kupoUtxoMap <- ExceptT $ handleAffjaxResponse <$> kupoGetRequest endpoint
   ExceptT $ resolveKupoUtxoMap kupoUtxoMap
 
