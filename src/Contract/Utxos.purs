@@ -6,11 +6,13 @@ module Contract.Utxos
   , getWalletBalance
   , getWalletUtxos
   , utxosAt
+  , utxosAtScriptHash
   , module X
   ) where
 
 import Prelude
 
+import Ctl.Internal.Serialization.Hash (ScriptHash)
 import Contract.Address (getWalletCollateral)
 import Contract.Log (logTrace', logWarn')
 import Contract.Monad (Contract, liftContractM, liftedE)
@@ -72,6 +74,14 @@ utxosAt addressAny = do
           <> "See the docs for UTxO locking in `doc/query-layers.md`. Using "
           <> "`getWalletUtxos` is a way to avoid the potential problems."
   cardanoUtxoMap <- liftedE $ liftAff $ queryHandle.utxosAt address
+  liftContractM "utxosAt: failed to convert utxos"
+    $ toPlutusUtxoMap cardanoUtxoMap
+
+utxosAtScriptHash
+  ::  ScriptHash -> Contract UtxoMap
+utxosAtScriptHash hash = do
+  queryHandle <- getQueryHandle
+  cardanoUtxoMap <- liftedE $ liftAff $ queryHandle.utxosAtScriptHash hash
   liftContractM "utxosAt: failed to convert utxos"
     $ toPlutusUtxoMap cardanoUtxoMap
 
