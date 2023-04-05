@@ -17,11 +17,28 @@ import Ctl.Internal.QueryM (QueryM)
 import Ctl.Internal.QueryM (evaluateTxOgmios, getChainTip, submitTxOgmios) as QueryM
 import Ctl.Internal.QueryM.CurrentEpoch (getCurrentEpoch) as QueryM
 import Ctl.Internal.QueryM.EraSummaries (getEraSummaries) as QueryM
-import Ctl.Internal.QueryM.Kupo (getDatumByHash, getOutputAddressesByTxHash, getScriptByHash, getTxMetadata, getUtxoByOref, isTxConfirmed, utxosAt, utxosAtScriptHash) as Kupo
+import Ctl.Internal.QueryM.Kupo
+  ( getDatumByHash
+  , getOutputAddressesByTxHash
+  , getScriptByHash
+  , getTxMetadata
+  , getUtxoByOref
+  , isTxConfirmed
+  , utxosAt
+  , utxosAtScriptHash
+  , utxosWithAssetClass
+  ) as Kupo
 import Ctl.Internal.QueryM.Ogmios (SubmitTxR(SubmitFail, SubmitTxSuccess))
-import Ctl.Internal.QueryM.Pools (getPoolIds, getPubKeyHashDelegationsAndRewards, getValidatorHashDelegationsAndRewards) as QueryM
+import Ctl.Internal.QueryM.Pools
+  ( getPoolIds
+  , getPubKeyHashDelegationsAndRewards
+  , getValidatorHashDelegationsAndRewards
+  ) as QueryM
 import Ctl.Internal.Serialization (convertTransaction, toBytes) as Serialization
-import Ctl.Internal.Service.Blockfrost (BlockfrostServiceM, runBlockfrostServiceM)
+import Ctl.Internal.Service.Blockfrost
+  ( BlockfrostServiceM
+  , runBlockfrostServiceM
+  )
 import Ctl.Internal.Service.Blockfrost as Blockfrost
 import Ctl.Internal.Service.Error (ClientError(ClientOtherError))
 import Data.Either (Either(Left, Right))
@@ -47,6 +64,7 @@ queryHandleForCtlBackend runQueryM params backend =
   , getTxMetadata: runQueryM' <<< Kupo.getTxMetadata
   , utxosAt: runQueryM' <<< Kupo.utxosAt
   , utxosAtScriptHash: runQueryM' <<< Kupo.utxosAtScriptHash
+  , utxosWithAssetClass: runQueryM' <<< Kupo.utxosWithAssetClass
   , getChainTip: Right <$> runQueryM' QueryM.getChainTip
   , getCurrentEpoch: runQueryM' QueryM.getCurrentEpoch
   , submitTx: \tx -> runQueryM' do
@@ -88,6 +106,8 @@ queryHandleForBlockfrostBackend logParams backend =
   , getTxMetadata: runBlockfrostServiceM' <<< Blockfrost.getTxMetadata
   , utxosAt: runBlockfrostServiceM' <<< Blockfrost.utxosAt
   , utxosAtScriptHash: runBlockfrostServiceM' <<< Blockfrost.utxosAtScriptHash
+  , utxosWithAssetClass: runBlockfrostServiceM' <<<
+      Blockfrost.utxosWithAssetClass
   , getChainTip: runBlockfrostServiceM' Blockfrost.getChainTip
   , getCurrentEpoch:
       runBlockfrostServiceM' Blockfrost.getCurrentEpoch >>= case _ of

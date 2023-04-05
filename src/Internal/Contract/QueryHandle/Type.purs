@@ -10,6 +10,7 @@ import Ctl.Internal.Cardano.Types.Transaction
   , TransactionOutput
   , UtxoMap
   )
+import Ctl.Internal.Cardano.Types.Value (AssetClass)
 import Ctl.Internal.Contract.QueryHandle.Error (GetTxMetadataError)
 import Ctl.Internal.QueryM.Ogmios
   ( AdditionalUtxoSet
@@ -44,6 +45,7 @@ type QueryHandle =
   , doesTxExist :: TransactionHash -> AffE Boolean
   , utxosAt :: Address -> AffE UtxoMap
   , utxosAtScriptHash :: ScriptHash -> AffE UtxoMap
+  , utxosWithAssetClass :: AssetClass -> AffE UtxoMap
   , getChainTip :: AffE Chain.Tip
   , getCurrentEpoch :: Aff CurrentEpoch
   -- TODO Capture errors from all backends

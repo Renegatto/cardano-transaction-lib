@@ -56,7 +56,8 @@ module Ctl.Internal.Service.Blockfrost
   , runBlockfrostServiceTestM
   , submitTx
   , utxosAt
-  , utxosAtScriptHash 
+  , utxosAtScriptHash
+  , utxosWithAssetClass
   ) where
 
 import Prelude
@@ -118,7 +119,7 @@ import Ctl.Internal.Cardano.Types.Transaction
   , UtxoMap
   , poolPubKeyHashToBech32
   )
-import Ctl.Internal.Cardano.Types.Value (Coin(Coin), Value)
+import Ctl.Internal.Cardano.Types.Value (AssetClass, Coin(Coin), Value)
 import Ctl.Internal.Cardano.Types.Value
   ( lovelaceValueOf
   , mkSingletonNonAdaAsset
@@ -547,8 +548,13 @@ utxosAt address = runExceptT $
       true -> pure utxos
       false -> append utxos <$> ExceptT (utxosAtAddressOnPage $ page + 1)
 
-utxosAtScriptHash :: ScriptHash -> BlockfrostServiceM (Either ClientError UtxoMap)
+utxosAtScriptHash
+  :: ScriptHash -> BlockfrostServiceM (Either ClientError UtxoMap)
 utxosAtScriptHash _address = pure (Left $ ClientOtherError "Not Implemented")
+
+utxosWithAssetClass
+  :: AssetClass -> BlockfrostServiceM (Either ClientError UtxoMap)
+utxosWithAssetClass _address = pure (Left $ ClientOtherError "Not Implemented")
 
 getUtxoByOref
   :: TransactionInput

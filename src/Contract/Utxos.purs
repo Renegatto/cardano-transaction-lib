@@ -12,7 +12,6 @@ module Contract.Utxos
 
 import Prelude
 
-import Ctl.Internal.Serialization.Hash (ScriptHash)
 import Contract.Address (getWalletCollateral)
 import Contract.Log (logTrace', logWarn')
 import Contract.Monad (Contract, liftContractM, liftedE)
@@ -36,6 +35,7 @@ import Ctl.Internal.Plutus.Types.Address (class PlutusAddress, getAddress)
 import Ctl.Internal.Plutus.Types.Transaction (TransactionOutput, UtxoMap)
 import Ctl.Internal.Plutus.Types.Transaction (UtxoMap) as X
 import Ctl.Internal.Plutus.Types.Value (Value)
+import Ctl.Internal.Serialization.Hash (ScriptHash)
 import Ctl.Internal.Types.Transaction (TransactionInput)
 import Data.Foldable (fold, foldr)
 import Data.Map as Map
@@ -78,7 +78,7 @@ utxosAt addressAny = do
     $ toPlutusUtxoMap cardanoUtxoMap
 
 utxosAtScriptHash
-  ::  ScriptHash -> Contract UtxoMap
+  :: ScriptHash -> Contract UtxoMap
 utxosAtScriptHash hash = do
   queryHandle <- getQueryHandle
   cardanoUtxoMap <- liftedE $ liftAff $ queryHandle.utxosAtScriptHash hash
