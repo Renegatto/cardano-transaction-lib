@@ -40,7 +40,11 @@ import Contract.PlutusData
   , unitRedeemer
   )
 import Contract.Prelude (mconcat)
-import Contract.Prim.ByteArray (byteArrayFromAscii, hexToByteArrayUnsafe)
+import Contract.Prim.ByteArray
+  ( byteArrayFromAscii
+  , hexToByteArrayUnsafe
+  , hexToRawBytes
+  )
 import Contract.ScriptLookups as Lookups
 import Contract.Scripts
   ( ValidatorHash
@@ -85,7 +89,12 @@ import Contract.TxConstraints as Constraints
 import Contract.Utxos (UtxoMap, getWalletBalance, utxosAt)
 import Contract.Value (Coin(Coin), Value, coinToValue)
 import Contract.Value as Value
-import Contract.Wallet (getWalletUtxos, isWalletAvailable, withKeyWallet)
+import Contract.Wallet
+  ( getWalletUtxos
+  , isWalletAvailable
+  , privateKeyFromBytes
+  , withKeyWallet
+  )
 import Control.Monad.Error.Class (try)
 import Control.Monad.Trans.Class (lift)
 import Control.Parallel (parallel, sequential)
@@ -150,7 +159,7 @@ import Data.Either (Either(Left, Right), isLeft, isRight)
 import Data.Foldable (fold, foldM, length)
 import Data.Lens (view)
 import Data.Map as Map
-import Data.Maybe (Maybe(Just, Nothing), isJust)
+import Data.Maybe (Maybe(Just, Nothing), fromJust, isJust)
 import Data.Newtype (unwrap, wrap)
 import Data.Traversable (traverse, traverse_)
 import Data.Tuple (Tuple(Tuple))
@@ -159,6 +168,7 @@ import Data.UInt (UInt)
 import Effect.Class (liftEffect)
 import Effect.Exception (throw)
 import Mote (group, skip, test)
+import Partial.Unsafe (unsafePartial)
 import Safe.Coerce (coerce)
 import Test.Ctl.Fixtures
   ( cip25MetadataFixture1
@@ -180,16 +190,42 @@ import Test.Spec.Assertions (shouldEqual, shouldNotEqual, shouldSatisfy)
 
 suite :: TestPlanM ContractTest Unit
 suite = do
-  skip $ group "TooManyAssetsInOutput regression - #1441" do
-    test "Mint many assets at once" do
+  group "Regressions" do
+    skip $ test
+      "#1441 - Mint many assets at once - fails with TooManyAssetsInOutput"
+      do
+        let
+          distribution :: InitialUTxOs
+          distribution =
+            [ BigInt.fromInt 1000_000_000
+            , BigInt.fromInt 2000_000_000
+            ]
+        withWallets distribution \alice -> do
+          withKeyWallet alice ManyAssets.contract
+    test "#1480 - test that does nothing but fails" do
       let
-        distribution :: InitialUTxOs
-        distribution =
-          [ BigInt.fromInt 1000_000_000
-          , BigInt.fromInt 2000_000_000
+        someUtxos =
+          [ BigInt.fromInt 2_000_000
+          , BigInt.fromInt 3_000_000
           ]
-      withWallets distribution \alice -> do
-        withKeyWallet alice ManyAssets.contract
+
+        privateStakeKey1 =
+          wrap $ unsafePartial $ fromJust
+            $ privateKeyFromBytes =<< hexToRawBytes
+                "63361c4c4a075a538d37e062c1ed0706d3f0a94b013708e8f5ab0a0ca1df163d"
+
+        privateStakeKey2 =
+          wrap $ unsafePartial $ fromJust
+            $ privateKeyFromBytes =<< hexToRawBytes
+                "6ffb1c4c4a075a538d37e062c1ed0706d3f0a94b013708e8f5ab0a0ca1df163d"
+
+        distribution =
+          [ withStakeKey privateStakeKey someUtxos
+          , withStakeKey privateStakeKey1 someUtxos
+          , withStakeKey privateStakeKey2 someUtxos
+          ]
+
+      withWallets distribution \_ → pure unit
 
   group "Contract interface" do
     -- NOTE: plutip timeout must be increased for this test to pass.
@@ -1870,7 +1906,7 @@ suite = do
           withCip30Mock alice MockNami $ ECDSA.contract
 
   group "CIP-49 Plutus Crypto Primitives" do
-    test "ECDSA: a script that checks a signature works" do
+    test "ECDSA: a script that checks if a signature is correct" do
       let
         distribution :: InitialUTxOs
         distribution =
@@ -1880,7 +1916,7 @@ suite = do
       withWallets distribution \alice -> do
         withKeyWallet alice do
           ECDSA.contract
-    test "Schnorr: a script that checks a signature works" do
+    test "Schnorr: a script that checks if a signature is correct" do
       let
         distribution :: InitialUTxOs
         distribution =
