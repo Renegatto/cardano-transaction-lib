@@ -7,6 +7,7 @@ module Contract.Utxos
   , getWalletUtxos
   , utxosAt
   , utxosAtScriptHash
+  , utxosWithAssetClass
   , module X
   ) where
 
@@ -18,19 +19,11 @@ import Contract.Monad (Contract, liftContractM, liftedE)
 import Contract.Prelude (for)
 import Contract.Value as Value
 import Control.Monad.Reader.Class (asks)
-import Ctl.Internal.BalanceTx.Sync
-  ( getControlledAddresses
-  , isCip30Wallet
-  , syncBackendWithWallet
-  , withoutSync
-  )
+import Ctl.Internal.BalanceTx.Sync (getControlledAddresses, isCip30Wallet, syncBackendWithWallet, withoutSync)
+import Ctl.Internal.Cardano.Types.Value (AssetClass)
 import Ctl.Internal.Contract.Monad (getQueryHandle)
 import Ctl.Internal.Contract.Wallet (getWalletUtxos) as Wallet
-import Ctl.Internal.Plutus.Conversion
-  ( fromPlutusAddress
-  , toPlutusTxOutput
-  , toPlutusUtxoMap
-  )
+import Ctl.Internal.Plutus.Conversion (fromPlutusAddress, toPlutusTxOutput, toPlutusUtxoMap)
 import Ctl.Internal.Plutus.Types.Address (class PlutusAddress, getAddress)
 import Ctl.Internal.Plutus.Types.Transaction (TransactionOutput, UtxoMap)
 import Ctl.Internal.Plutus.Types.Transaction (UtxoMap) as X
@@ -82,7 +75,15 @@ utxosAtScriptHash
 utxosAtScriptHash hash = do
   queryHandle <- getQueryHandle
   cardanoUtxoMap <- liftedE $ liftAff $ queryHandle.utxosAtScriptHash hash
-  liftContractM "utxosAt: failed to convert utxos"
+  liftContractM "utxosAtScriptHash: failed to convert utxos"
+    $ toPlutusUtxoMap cardanoUtxoMap
+
+utxosWithAssetClass
+  :: AssetClass -> Contract UtxoMap
+utxosWithAssetClass ac = do
+  queryHandle <- getQueryHandle
+  cardanoUtxoMap <- liftedE $ liftAff $ queryHandle.utxosWithAssetClass ac
+  liftContractM "utxosWithAssetClass: failed to convert utxos"
     $ toPlutusUtxoMap cardanoUtxoMap
 
 -- | Queries for an utxo given a transaction input.
