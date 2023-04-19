@@ -15,9 +15,14 @@ import Contract.Log (logWarn')
 import Contract.Monad (Contract, liftContractM, liftedE)
 import Contract.Prelude (for)
 import Control.Monad.Reader.Class (asks)
-import Ctl.Internal.BalanceTx.Sync (getControlledAddresses, isCip30Wallet, syncBackendWithWallet, withoutSync)
-import Ctl.Internal.Cardano.Types.Value (AssetClass)
 import Ctl.Internal.BalanceTx.Sync (getControlledAddresses, isCip30Wallet)
+import Ctl.Internal.BalanceTx.Sync
+  ( getControlledAddresses
+  , isCip30Wallet
+  , syncBackendWithWallet
+  , withoutSync
+  )
+import Ctl.Internal.Cardano.Types.Value (AssetClass)
 import Ctl.Internal.Contract.Monad (getQueryHandle)
 import Ctl.Internal.Contract.Wallet as Wallet
 import Ctl.Internal.Plutus.Conversion

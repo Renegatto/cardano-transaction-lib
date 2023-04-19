@@ -26,6 +26,7 @@ import Contract.Metadata
   )
 import Contract.Monad (Contract, liftContractE, liftContractM, liftedE, liftedM)
 import Contract.Numeric.BigNum as BigNum
+import Contract.Numeric.Natural as Natural
 import Contract.PlutusData
   ( Datum(Datum)
   , PlutusData(Bytes, Integer, List)
@@ -132,6 +133,7 @@ import Ctl.Examples.PlutusV2.Scripts.AlwaysSucceeds (alwaysSucceedsScriptV2)
 import Ctl.Examples.Schnorr as Schnorr
 import Ctl.Examples.SendsToken (contract) as SendsToken
 import Ctl.Examples.TxChaining (contract) as TxChaining
+import Ctl.Internal.Contract.WaitUntilSlot (waitNSlots)
 import Ctl.Internal.Plutus.Conversion.Address (toPlutusAddress)
 import Ctl.Internal.Plutus.Types.Address (Address, pubKeyHashAddress)
 import Ctl.Internal.Plutus.Types.Transaction
