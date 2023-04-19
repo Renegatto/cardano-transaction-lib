@@ -22,7 +22,6 @@ import Ctl.Internal.Types.Interval
   , SlotToPosixTimeError(CannotFindSlotInEraSummaries)
   , findSlotEraSummary
   , getSlotLength
-  , highestEndSlotInEraSummaries
   , slotToPosixTime
   )
 import Ctl.Internal.Types.Natural (Natural)
@@ -54,29 +53,10 @@ waitUntilSlot targetSlot = do
       | slot >= targetSlot -> pure tip
       | otherwise -> do
           { systemStart } <- asks _.ledgerConstants
-          let
-            getEraSummaries =
-              liftAff queryHandle.getEraSummaries
-                >>= liftContractE
-          eraSummaries <- getEraSummaries
-          highestSlot <- liftContractM "Can't find any Era summary" $
-            highestEndSlotInEraSummaries eraSummaries
-          let
-            toWait = case highestSlot of
-              Just highestEndSlot
-                | Just waitThen <- futureSlot `sub` highestEndSlot
-                , Just waitNow <-
-                    highestEndSlot `sub` wrap (BigNum.fromInt 1) ->
-                    { waitNow, waitThen: Just waitThen }
-              _ ->
-                { waitNow: futureSlot
-                , waitThen: Nothing
-                }
-          logTrace' $
-            "waitUntilSlot: toWait: " <> show toWait <> "  " <> show
-              highestSlot
-          slotLengthMs <- map getSlotLength
-            $ liftContractE
+          eraSummaries <- liftAff $
+            queryHandle.getEraSummaries
+              >>= either (liftEffect <<< throw <<< show) pure
+          slotLengthMs <- map getSlotLength $ liftEither
             $ lmap (const $ error "Unable to get current Era summary")
             $ findSlotEraSummary eraSummaries slot
           getLag eraSummaries systemStart slot >>= logLag slotLengthMs
@@ -127,10 +107,6 @@ waitUntilSlot targetSlot = do
       liftAff $ delay retryDelay
       waitUntilSlot targetSlot
   where
-  sub :: Slot -> Slot -> Maybe Slot
-  sub a b = map wrap <<< BigNum.fromBigInt $
-    BigNum.toBigInt (unwrap a) - BigNum.toBigInt (unwrap b)
-
   logLag :: Number -> Milliseconds -> Contract Unit
   logLag slotLengthMs (Milliseconds lag) = do
     logTrace' $
