@@ -138,6 +138,7 @@ utxosWithAssetClass (AssetClass cs tn) = runExceptT do
     endpoint = "/matches/" <> byteArrayToHex (getCurrencySymbol cs)
       <> "."
       <> byteArrayToHex (getTokenName tn)
+      <> "?unspent"
   kupoUtxoMap <- ExceptT $ handleAffjaxResponse <$> kupoGetRequest endpoint
   ExceptT $ resolveKupoUtxoMap kupoUtxoMap
 
