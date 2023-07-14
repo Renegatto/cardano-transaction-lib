@@ -1,13 +1,4 @@
-module Ctl.Internal.Plutip.Server
-  ( runPlutipContract
-  , withPlutipContractEnv
-  , startPlutipCluster
-  , stopPlutipCluster
-  , startPlutipServer
-  , checkPlutipServer
-  , stopChildProcessWithPort
-  , testPlutipContracts
-  ) where
+module Ctl.Internal.Plutip.Server where
 
 import Prelude
 
@@ -17,6 +8,7 @@ import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as Header
 import Affjax.ResponseFormat as Affjax.ResponseFormat
 import Contract.Address (NetworkId(MainnetId))
+import Contract.Chain (waitNSlots)
 import Contract.Config (defaultSynchronizationParams, defaultTimeParams)
 import Contract.Monad (Contract, ContractEnv, liftContractM, runContractInEnv)
 import Control.Monad.Error.Class (liftEither)
@@ -137,7 +129,7 @@ withPlutipContractEnv
 withPlutipContractEnv plutipCfg distr cont = do
   cleanupRef <- liftEffect $ Ref.new mempty
   Aff.bracket
-    (try $ startPlutipContractEnv plutipCfg distr cleanupRef)
+    (try $ startPlutipContractEnv plutipCfg distr (\_ -> pure unit) cleanupRef)
     (const $ runCleanup cleanupRef)
     $ liftEither >=> \{ env, wallets, printLogs } ->
         whenError printLogs (cont env wallets)
@@ -156,7 +148,7 @@ testPlutipContracts plutipCfg tp = do
   ContractTestPlan runContractTestPlan <- lift $ execDistribution tp
   runContractTestPlan \distr tests -> do
     cleanupRef <- liftEffect $ Ref.new mempty
-    bracket (startPlutipContractEnv plutipCfg distr cleanupRef)
+    bracket (startPlutipContractEnv plutipCfg distr (\_ -> pure unit) cleanupRef)
       (runCleanup cleanupRef)
       $ flip mapTest tests \test { env, wallets, printLogs, clearLogs } -> do
           whenError printLogs (runContractInEnv env (test wallets))
@@ -233,24 +225,31 @@ execDistribution (MoteT mote) = execWriterT mote <#> go
 -- | succesfully complete.
 -- Startup is implemented sequentially, rather than with nested `Aff.bracket`,
 -- to allow non-`Aff` computations to occur between setup and cleanup.
+
+type Refs = Ref (Array (Aff Unit))
+
 startPlutipContractEnv
   :: forall (distr :: Type) (wallets :: Type)
    . UtxoDistribution distr wallets
   => PlutipConfig
   -> distr
-  -> Ref (Array (Aff Unit))
+  -> (Refs -> Aff Unit)
+  -> Refs
   -> Aff
        { env :: ContractEnv
        , wallets :: wallets
        , printLogs :: Aff Unit
        , clearLogs :: Aff Unit
        }
-startPlutipContractEnv plutipCfg distr cleanupRef = do
+startPlutipContractEnv plutipCfg distr hooks cleanupRef = do
   configCheck plutipCfg
   startPlutipServer'
   ourKey /\ response <- startPlutipCluster'
   startOgmios' response
   startKupo' response
+
+  hooks cleanupRef
+
   { env, printLogs, clearLogs } <- mkContractEnv'
   wallets <- mkWallets' env ourKey response
   pure
@@ -324,6 +323,7 @@ startPlutipContractEnv plutipCfg distr cleanupRef = do
             "Impossible happened: could not decode wallets. Please report as bug"
             $ decodeWallets distr (unwrap <$> response.privateKeys)
         let walletsArray = keyWallets (Proxy :: Proxy distr) wallets
+        void $ waitNSlots one
         transferFundsFromEnterpriseToBase ourKey walletsArray
         pure wallets
 

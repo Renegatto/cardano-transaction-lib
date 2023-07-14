@@ -11,6 +11,8 @@ module Ctl.Internal.Plutip.Spawn
   , cleanupTmpDir
   , cleanupOnSigint
   , removeOnSignal
+  , _rmdirSync
+  , onSignal 
   ) where
 
 import Prelude
