@@ -97,6 +97,7 @@ import Data.Traversable (foldMap, for, for_, sequence_, traverse_)
 import Data.Tuple (fst, snd)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.UInt (UInt)
+import Ctl.Internal.QueryM.UniqueId (uniqueId)
 import Data.UInt as UInt
 import Effect.Aff (Aff, Milliseconds(Milliseconds), try)
 import Effect.Aff (bracket) as Aff
@@ -544,8 +545,9 @@ startKupo
   -> Aff (ManagedProcess /\ String /\ OnSignalRef)
 startKupo cfg params = do
   tmpDir <- liftEffect tmpdir
+  randomStr ← liftEffect $ uniqueId ""
   let
-    workdir = tmpDir <</>> "kupo-db"
+    workdir = tmpDir <</>> (randomStr <> "-kupo-db")
     testClusterDir = (dirname <<< dirname) params.nodeConfigPath
   liftEffect do
     workdirExists <- FSSync.exists workdir
