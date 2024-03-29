@@ -78,7 +78,9 @@ Another thing to keep in mind is that due to [min-ada requirements](https://docs
 
 CTL does not consume wallet collateral normally, but it still can happen.
 
-In order to get the collateral UTxO, CTL uses the wallet and then marks the returned UTxO as locked internally. But some wallets (e.g. Gero) do not return the collateral the moment it is set, waiting for Tx confirmation first. In case a collateral is set right before the contract is started, CTL can accidentally spend the collateral, because we rely on CTL's own query layer to get a list of available UTxOs, and the wallet state may lag behind it, not returning the collateral to filter out at that moment.
+In order to get the collateral UTxO, CTL uses the wallet and then marks the returned UTxO as "locked" internally. But some wallets (e.g. Gero) do not return the collateral the moment it is set, waiting for Tx confirmation first. In case a collateral is set right before the contract is started, CTL can accidentally spend the collateral, because we rely on CTL's own query layer to get a list of available UTxOs without consulting with the wallet [in some cases](./query-layers.md), and the wallet state may lag behind the backend state.
+
+It is impossible to lose the collateral UTxO funds completely, though, because CTL always uses [CIP-40 collateral return](https://cips.cardano.org/cip/CIP-0040).
 
 ## Time-related
 
@@ -90,7 +92,9 @@ To do anything time-related, it's best to rely on local node chain tip time, ins
 
 ### Q: Time/slot conversion functions return `Nothing`. Why is that?
 
-Time/slot conversion functions depend on `eraSummaries` [Ogmios local state query](https://ogmios.dev/mini-protocols/local-state-query/), that returns era bounds and slotting parameters details, required for proper slot arithmetic. The most common source of the problem is that Ogmios does not return enough epochs into the future.
+Time/slot conversion functions depend on `eraSummaries` [Ogmios local state query](https://ogmios.dev/mini-protocols/local-state-query/), that returns era bounds and slotting parameters details, required for proper slot arithmetic. The most common source of the problem is that Ogmios does not return enough epochs into the future. [A possible symptom](https://github.com/Plutonomicon/cardano-transaction-lib/issues/1057) is `CannotFindTimeInEraSummaries` in the error message.
+
+When using Plutip, a solution may be [to increase the `epochSize` parameter](https://github.com/Plutonomicon/cardano-transaction-lib/issues/1057#issuecomment-1450692539).
 
 ### Q: I'm getting `Uncomputable slot arithmetic; transaction's validity bounds go beyond the foreseeable end of the current era: PastHorizon`
 

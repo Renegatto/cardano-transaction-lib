@@ -1,17 +1,11 @@
-/* global BROWSER_RUNTIME */
+import * as lib from "@mlabs-haskell/cardano-serialization-lib-gc";
 
-let lib;
-if (typeof BROWSER_RUNTIME != "undefined" && BROWSER_RUNTIME) {
-  lib = require("@emurgo/cardano-serialization-lib-browser");
-} else {
-  lib = require("@emurgo/cardano-serialization-lib-nodejs");
+export function _BigInt_from_str(helper) {
+  return str => {
+    try {
+      return helper.just(lib.BigInt.from_str(str));
+    } catch (_) {
+      return helper.nothing;
+    }
+  };
 }
-lib = require("@mlabs-haskell/csl-gc-wrapper")(lib);
-
-exports._BigInt_from_str = helper => str => {
-  try {
-    return helper.just(lib.BigInt.from_str(str));
-  } catch (_) {
-    return helper.nothing;
-  }
-};

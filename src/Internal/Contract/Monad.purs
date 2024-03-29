@@ -76,7 +76,7 @@ import Ctl.Internal.Types.ProtocolParameters (ProtocolParameters)
 import Ctl.Internal.Types.SystemStart (SystemStart)
 import Ctl.Internal.Types.Transaction (TransactionHash)
 import Ctl.Internal.Types.UsedTxOuts (UsedTxOuts, isTxOutRefUsed, newUsedTxOuts)
-import Ctl.Internal.Wallet (Wallet, actionBasedOnWallet)
+import Ctl.Internal.Wallet (Wallet(GenericCip30))
 import Ctl.Internal.Wallet.Spec (WalletSpec, mkWalletBySpec)
 import Data.Bifunctor (lmap)
 import Data.Either (Either(Left, Right), isRight)
@@ -90,12 +90,11 @@ import Data.Time.Duration (Milliseconds, Seconds)
 import Data.Traversable (for_, traverse, traverse_)
 import Effect (Effect)
 import Effect.Aff (Aff, ParAff, attempt, error, finally, supervise)
-import Effect.Aff.Class (liftAff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Exception (Error, throw, try)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import MedeaPrelude (class MonadAff)
 import Record.Builder (build, merge)
 
 --------------------------------------------------------------------------------
@@ -190,7 +189,6 @@ type ContractEnv =
   , handle :: QueryHandle
   , networkId :: NetworkId
   , logLevel :: LogLevel
-  , walletSpec :: Maybe WalletSpec
   , customLogger :: Maybe (LogLevel -> Message -> Aff Unit)
   , suppressLogs :: Boolean
   , hooks :: Hooks
@@ -260,7 +258,6 @@ mkContractEnv params = do
   constants =
     { networkId: params.networkId
     , logLevel: params.logLevel
-    , walletSpec: params.walletSpec
     , customLogger: params.customLogger
     , suppressLogs: params.suppressLogs
     , hooks: params.hooks
@@ -320,11 +317,13 @@ getLedgerConstants params = case _ of
 
 -- | Ensure that `NetworkId` from wallet is the same as specified in the
 -- | `ContractEnv`.
+-- todo: reimplement uniformly
 walletNetworkCheck :: NetworkId -> Wallet -> Aff Unit
 walletNetworkCheck envNetworkId =
-  actionBasedOnWallet
-    (\w -> check <=< intToNetworkId <=< _.getNetworkId w)
-    (pure $ pure unit)
+  case _ of
+    GenericCip30 wallet -> do
+      check =<< intToNetworkId =<< wallet.getNetworkId
+    _ -> pure unit
   where
   check :: NetworkId -> Aff Unit
   check networkId = unless (envNetworkId == networkId) do

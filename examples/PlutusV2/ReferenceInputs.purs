@@ -8,7 +8,6 @@ import Contract.Monad
   ( Contract
   , launchAff_
   , liftContractM
-  , liftedE
   , liftedM
   , runContract
   )
@@ -31,6 +30,7 @@ import Contract.Transaction
   , submit
   )
 import Contract.TxConstraints as Constraints
+import Contract.UnbalancedTx (mkUnbalancedTx)
 import Contract.Value (lovelaceValueOf) as Value
 import Contract.Wallet
   ( getWalletUtxos
@@ -40,10 +40,10 @@ import Contract.Wallet
 import Control.Monad.Trans.Class (lift)
 import Ctl.Examples.Helpers (mustPayToPubKeyStakeAddress) as Helpers
 import Data.Array (head) as Array
-import Data.BigInt (fromInt) as BigInt
 import Data.Lens.Getter ((^.))
 import Data.Map (member, toUnfoldable) as Map
 import Data.Set (member) as Set
+import JS.BigInt (fromInt) as BigInt
 
 main :: Effect Unit
 main = example testnetNamiConfig
@@ -65,19 +65,19 @@ contract = do
       (fst <$> Array.head (Map.toUnfoldable utxos :: Array _))
 
   let
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints = mconcat
       [ Constraints.mustReferenceOutput oref
       , Helpers.mustPayToPubKeyStakeAddress pkh skh
           (Value.lovelaceValueOf $ BigInt.fromInt 2_000_000)
       ]
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   void $ runChecks checks $ lift do
-    unbalancedTx <- liftedE $ Lookups.mkUnbalancedTx lookups constraints
-    balancedSignedTx <- signTransaction =<< liftedE (balanceTx unbalancedTx)
+    unbalancedTx <- mkUnbalancedTx lookups constraints
+    balancedSignedTx <- signTransaction =<< balanceTx unbalancedTx
     txHash <- submit balancedSignedTx
     logInfo' $ "Tx ID: " <> show txHash
     awaitTxConfirmed txHash

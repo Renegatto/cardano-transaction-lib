@@ -11,7 +11,7 @@ import Contract.Config (ContractParams, testnetNamiConfig)
 import Contract.Credential (Credential(PubKeyCredential))
 import Contract.Log (logInfo')
 import Contract.Monad (Contract, launchAff_, liftContractM, runContract)
-import Contract.PlutusData (PlutusData, unitDatum, unitRedeemer)
+import Contract.PlutusData (unitDatum, unitRedeemer)
 import Contract.ScriptLookups as Lookups
 import Contract.Scripts (ValidatorHash, validatorHash)
 import Contract.Transaction
@@ -33,8 +33,8 @@ import Contract.Value (lovelaceValueOf) as Value
 import Contract.Wallet (ownStakePubKeyHashes)
 import Ctl.Examples.PlutusV2.Scripts.AlwaysSucceeds (alwaysSucceedsScriptV2)
 import Data.Array (head)
-import Data.BigInt (fromInt) as BigInt
 import Data.Map (toUnfoldable) as Map
+import JS.BigInt (fromInt) as BigInt
 
 main :: Effect Unit
 main = example testnetNamiConfig
@@ -43,6 +43,9 @@ example :: ContractParams -> Effect Unit
 example cfg = launchAff_ do
   runContract cfg contract
 
+-- NOTE: If you are looking for an example of the most common case of 
+-- using reference scripts by referencing an output and not spending it,
+-- you likely need to look at the example in `ReferenceInputsAndScripts.purs`.
 contract :: Contract Unit
 contract = do
   logInfo' "Running Examples.PlutusV2.ReferenceScripts"
@@ -67,7 +70,7 @@ payWithScriptRefToAlwaysSucceeds vhash scriptRef = do
   -- `mustPayToScriptAddressWithScriptRef`
   mbStakeKeyHash <- join <<< head <$> ownStakePubKeyHashes
   let
-    constraints :: TxConstraints Unit Unit
+    constraints :: TxConstraints
     constraints =
       case mbStakeKeyHash of
         Nothing ->
@@ -83,7 +86,7 @@ payWithScriptRefToAlwaysSucceeds vhash scriptRef = do
             scriptRef
             (Value.lovelaceValueOf $ BigInt.fromInt 2_000_000)
 
-    lookups :: Lookups.ScriptLookups PlutusData
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   submitTxFromConstraints lookups constraints
@@ -103,12 +106,12 @@ spendFromAlwaysSucceeds vhash txId = do
       $ find hasTransactionId (Map.toUnfoldable utxos :: Array _)
 
   let
-    constraints :: TxConstraints Unit Unit
+    constraints :: TxConstraints
     constraints =
       Constraints.mustSpendScriptOutputUsingScriptRef txInput unitRedeemer
         (SpendInput $ mkTxUnspentOut txInput txOutput)
 
-    lookups :: Lookups.ScriptLookups PlutusData
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   spendTxId <- submitTxFromConstraints lookups constraints

@@ -20,7 +20,7 @@ import Contract.Address
   , getNetworkId
   , payPubKeyHashEnterpriseAddress
   )
-import Contract.Monad (Contract, liftContractM, liftedE, liftedM)
+import Contract.Monad (Contract, liftContractM, liftedM)
 import Contract.Prelude (foldM, foldMap, null)
 import Contract.ScriptLookups as Lookups
 import Contract.Transaction
@@ -31,6 +31,7 @@ import Contract.Transaction
   , submit
   )
 import Contract.TxConstraints as Constraints
+import Contract.UnbalancedTx (mkUnbalancedTx)
 import Contract.Utxos (utxosAt)
 import Contract.Wallet
   ( getWalletAddresses
@@ -52,7 +53,6 @@ import Ctl.Internal.Wallet.Key
   )
 import Data.Array (head)
 import Data.Array as Array
-import Data.BigInt (BigInt)
 import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.List (List, (:))
 import Data.Map as Map
@@ -63,6 +63,7 @@ import Data.Tuple (Tuple)
 import Data.Tuple.Nested (type (/\), (/\))
 import Effect.Class (liftEffect)
 import Effect.Ref as Ref
+import JS.BigInt (BigInt)
 import Type.Prelude (Proxy(Proxy))
 
 -- | UTxO amount in Lovelaces
@@ -205,17 +206,17 @@ transferFundsFromEnterpriseToBase ourKey wallets = do
     ourPkh <- liftedM "Could not get our payment pkh" $
       head <$> withKeyWallet ourWallet ownPaymentPubKeyHashes
     let
-      lookups :: Lookups.ScriptLookups Void
+      lookups :: Lookups.ScriptLookups
       lookups = Lookups.unspentOutputs ourUtxos
         <> foldMap (_.utxos >>> Lookups.unspentOutputs) walletsInfo
 
-      constraints :: Constraints.TxConstraints Void Void
+      constraints :: Constraints.TxConstraints
       constraints = Constraints.mustBeSignedBy ourPkh
         <> foldMap constraintsForWallet walletsInfo
-    unbalancedTx <- liftedE $ Lookups.mkUnbalancedTx lookups constraints
+    unbalancedTx <- mkUnbalancedTx lookups constraints
     signedTx <-
       withKeyWallet ourWallet $
-        signTransaction =<< liftedE (balanceTx unbalancedTx)
+        signTransaction =<< balanceTx unbalancedTx
     signedTx' <- foldM
       (\tx { wallet } -> withKeyWallet wallet $ signTransaction tx)
       signedTx
@@ -228,7 +229,7 @@ transferFundsFromEnterpriseToBase ourKey wallets = do
     cache <- asks (unwrap <<< _.usedTxOuts)
     liftEffect $ Ref.write Map.empty cache
   where
-  constraintsForWallet :: WalletInfo -> Constraints.TxConstraints Void Void
+  constraintsForWallet :: WalletInfo -> Constraints.TxConstraints
   constraintsForWallet { utxos, payPkh, stakePkh } =
     -- It's necessary to include `mustBeSignedBy`, we get a
     -- `feeTooSmall` error otherwise. See

@@ -73,11 +73,9 @@ import Ctl.Internal.Types.TxConstraints
   , mustSpendPubKeyOutput
   , singleton
   )
-import Ctl.Internal.Wallet (KeyWallet)
+import Ctl.Internal.Wallet.Key (KeyWallet)
 import Data.Array (catMaybes)
 import Data.Array as Array
-import Data.BigInt (BigInt)
-import Data.BigInt as BigInt
 import Data.Either (Either(Right, Left), hush)
 import Data.Foldable (fold, sum)
 import Data.Lens ((^.))
@@ -104,9 +102,12 @@ import Effect.Class (liftEffect)
 import Effect.Class.Console (info)
 import Effect.Exception (error, throw)
 import Effect.Ref as Ref
+import JS.BigInt (BigInt)
+import JS.BigInt as BigInt
 import Mote.Monad (mapTest)
 import Node.Encoding (Encoding(UTF8))
-import Node.FS.Aff (exists, mkdir, readTextFile, readdir, writeTextFile)
+import Node.FS.Aff (mkdir, readTextFile, readdir, writeTextFile)
+import Node.FS.Sync (exists)
 import Node.Path (FilePath)
 import Node.Path (concat) as Path
 import Type.Prelude (Proxy(Proxy))
@@ -254,7 +255,7 @@ restoreWallets backup = do
         [ backup, walletDir, "stake_signing_key" ]
       inactiveFlagFile = Path.concat [ backup, walletDir, "inactive" ]
     -- Skip this wallet if it was marked as inactive
-    exists inactiveFlagFile >>= case _ of
+    liftEffect (exists inactiveFlagFile) >>= case _ of
       true -> pure Nothing
       false -> do
         paymentKeyEnvelope <- readTextFile UTF8 paymentKeyFilePath
@@ -304,7 +305,7 @@ fundWallets env walletsArray distrArray = runContractInEnv env $ noLogs do
       \(wallet /\ walletDistr) -> flip foldMap walletDistr
         \value -> mustPayToKeyWallet wallet $ lovelaceValueOf value
 
-  txHash <- submitTxFromConstraints (mempty :: _ Void) constraints
+  txHash <- submitTxFromConstraints mempty constraints
   awaitTxConfirmed txHash
   let fundTotal = Array.foldl (+) zero $ join distrArray
   -- Use log so we can see, regardless of suppression
@@ -386,9 +387,8 @@ returnFunds backup env allWalletsArray mbFundTotal hasRun =
             <> foldMap mustBeSignedBy pkhs
           lookups = unspentOutputs utxos
 
-        unbalancedTx <- liftedE $ mkUnbalancedTxImpl (lookups :: _ Void)
-          constraints
-        balancedTx <- liftedE $ balanceTx unbalancedTx
+        unbalancedTx <- liftedE $ mkUnbalancedTxImpl lookups constraints
+        balancedTx <- balanceTx unbalancedTx
         balancedSignedTx <- Array.foldM
           (\tx wallet -> withKeyWallet wallet $ signTransaction tx)
           (wrap $ unwrap balancedTx)
@@ -435,7 +435,7 @@ mustPayToKeyWallet
   :: forall (i :: Type) (o :: Type)
    . KeyWallet
   -> Value
-  -> TxConstraints i o
+  -> TxConstraints
 mustPayToKeyWallet wallet value =
   let
     convert = publicKeyHash <<< publicKeyFromPrivateKey

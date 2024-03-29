@@ -29,8 +29,8 @@ import Ctl.Examples.Helpers
   , mustPayToPubKeyStakeAddress
   ) as Helpers
 import Data.Array (head)
-import Data.BigInt (BigInt)
-import Data.BigInt as BigInt
+import JS.BigInt (BigInt)
+import JS.BigInt as BigInt
 
 main :: Effect Unit
 main = example testnetNamiConfig
@@ -45,13 +45,13 @@ contract = do
   tn <- Helpers.mkTokenName "NSToken"
 
   let
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints =
       Constraints.mustMintCurrencyUsingNativeScript
         (nsPolicy pkh)
         tn $ BigInt.fromInt 100
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = Lookups.mintingPolicy mp
 
   txId <- submitTxFromConstraints lookups constraints
@@ -67,12 +67,12 @@ toSelfContract cs tn amount = do
   skh <- join <<< head <$> ownStakePubKeyHashes
 
   let
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints = Helpers.mustPayToPubKeyStakeAddress pkh skh
       $ Value.singleton cs tn
       $ amount
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   txId <- submitTxFromConstraints lookups constraints

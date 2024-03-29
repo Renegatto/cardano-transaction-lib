@@ -49,7 +49,7 @@ import Contract.Wallet
 import Control.Monad.Trans.Class (lift)
 import Ctl.Examples.Helpers (mustPayToPubKeyStakeAddressWithDatum)
 import Data.Array (head)
-import Data.BigInt (fromInt) as BigInt
+import JS.BigInt (fromInt) as BigInt
 
 type ContractResult =
   { address :: Address
@@ -79,12 +79,12 @@ contract = do
     value :: Value
     value = Value.lovelaceValueOf (BigInt.fromInt 2_000_000)
 
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints =
       mustPayToPubKeyStakeAddressWithDatum pkh skh datum DatumWitness value
         <> mustPayToPubKeyStakeAddressWithDatum pkh skh datum DatumInline value
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   void $ runChecks checks $ lift do

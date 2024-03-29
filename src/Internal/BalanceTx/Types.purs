@@ -2,7 +2,6 @@ module Ctl.Internal.BalanceTx.Types
   ( BalanceTxM
   , BalanceTxMContext
   , FinalizedTransaction(FinalizedTransaction)
-  , askCip30Wallet
   , askCoinsPerUtxoUnit
   , askCostModelsForLanguages
   , askNetworkId
@@ -31,13 +30,11 @@ import Ctl.Internal.Serialization.Address (NetworkId)
 import Ctl.Internal.Serialization.Address as Csl
 import Ctl.Internal.Types.ProtocolParameters (CoinsPerUtxoUnit)
 import Ctl.Internal.Types.Scripts (Language)
-import Ctl.Internal.Wallet (Cip30Wallet, cip30Wallet)
 import Data.Either (Either)
 import Data.Generic.Rep (class Generic)
 import Data.Lens (Lens')
 import Data.Lens.Getter (view)
 import Data.Map (filterKeys) as Map
-import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype, over, unwrap)
 import Data.Set (Set)
 import Data.Set (fromFoldable, member) as Set
@@ -67,9 +64,6 @@ askCoinsPerUtxoUnit :: BalanceTxM CoinsPerUtxoUnit
 askCoinsPerUtxoUnit =
   asksContractEnv
     (_.coinsPerUtxoUnit <<< unwrap <<< _.pparams <<< _.ledgerConstants)
-
-askCip30Wallet :: BalanceTxM (Maybe Cip30Wallet)
-askCip30Wallet = asksContractEnv (cip30Wallet <=< _.wallet)
 
 askNetworkId :: BalanceTxM NetworkId
 askNetworkId = asksContractEnv _.networkId

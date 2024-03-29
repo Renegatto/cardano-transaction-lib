@@ -9,7 +9,6 @@ import Contract.TextEnvelope
   , decodeTextEnvelope
   )
 import Control.Monad.Error.Class (class MonadThrow, liftMaybe)
-import Ctl.Examples.OtherTypeTextEnvelope (otherTypeTextEnvelope)
 import Ctl.Internal.Cardano.Types.NativeScript (NativeScript(ScriptAny)) as T
 import Ctl.Internal.Cardano.Types.Transaction (Transaction, TransactionOutput) as T
 import Ctl.Internal.Cardano.Types.Transaction (Vkeywitness)
@@ -41,7 +40,6 @@ import Ctl.Internal.Test.TestPlanM (TestPlanM)
 import Ctl.Internal.Types.BigNum (fromBigInt, toBigInt) as BigNum
 import Ctl.Internal.Types.Transaction (TransactionInput) as T
 import Data.Array as Array
-import Data.BigInt as BigInt
 import Data.Either (hush)
 import Data.Foldable (fold)
 import Data.Maybe (isJust, isNothing)
@@ -51,6 +49,7 @@ import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Exception (Error, error)
+import JS.BigInt as BigInt
 import Mote (group, skip, test)
 import Test.Ctl.Fixtures
   ( nativeScriptFixture1
@@ -156,7 +155,7 @@ suite = do
     group "WitnessSet - deserialization" do
       group "fixture #1" do
         res <- errMaybe "Failed deserialization 5" do
-          fromBytes (wrap witnessSetFixture1) >>= convertWitnessSet
+          fromBytes (wrap witnessSetFixture1) <#> convertWitnessSet
         test "has vkeys" do
           (unwrap res).vkeys `shouldSatisfy` isJust
         test "has plutusData" do
@@ -171,15 +170,15 @@ suite = do
           (unwrap res).nativeScripts `shouldSatisfy` isNothing
       test "fixture #2" do
         res <- errMaybe "Failed deserialization 6" do
-          fromBytes (wrap witnessSetFixture2) >>= convertWitnessSet
+          fromBytes (wrap witnessSetFixture2) <#> convertWitnessSet
         res `shouldEqual` witnessSetFixture2Value
       test "fixture #3" do
         res <- errMaybe "Failed deserialization 7" do
-          fromBytes (wrap witnessSetFixture3) >>= convertWitnessSet
+          fromBytes (wrap witnessSetFixture3) <#> convertWitnessSet
         res `shouldEqual` witnessSetFixture3Value
       group "fixture #4" do
         res <- errMaybe "Failed deserialization 8" $
-          fromBytes (wrap witnessSetFixture4) >>= convertWitnessSet
+          fromBytes (wrap witnessSetFixture4) <#> convertWitnessSet
         test "has nativeScripts" do
           (unwrap res).nativeScripts `shouldSatisfy` isJust
     group "NativeScript - deserializaton is inverse to serialization" do
@@ -232,10 +231,11 @@ suite = do
           -> m Unit
         witnessSetRoundTrip fixture = do
           ws0 <- errMaybe "Failed deserialization" $
-            fromBytes (wrap fixture) >>= convertWitnessSet
+            fromBytes (wrap fixture) <#> convertWitnessSet
           ws1 <- liftEffect $ SW.convertWitnessSet ws0
-          ws2 <- errMaybe "Failed deserialization" $ convertWitnessSet ws1
-          let vkeys = fold (unwrap ws2).vkeys
+          let
+            ws2 = convertWitnessSet ws1
+            vkeys = fold (unwrap ws2).vkeys
           vkeyWitnessesRoundtrip vkeys
           ws0 `shouldEqual` ws2 -- value representation
           let wsBytes = unwrap $ Serialization.toBytes ws1
@@ -247,6 +247,15 @@ suite = do
       test "fixture #4" $ witnessSetRoundTrip witnessSetFixture4
     group "TextEnvelope decoding" do
       test "Decoding TestEnvelope with some other type" do
+        let
+          otherTypeTextEnvelope =
+            """
+              {
+                "cborHex": "484701000022120011",
+                "description": "other-type-text-envelope",
+                "type": "SomeOtherType"
+              }
+              """
         TextEnvelope envelope <- liftMaybe (error "Unexpected parsing error") $
           decodeTextEnvelope otherTypeTextEnvelope
         envelope.type_ `shouldEqual` (Other "SomeOtherType")

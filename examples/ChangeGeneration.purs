@@ -3,7 +3,7 @@ module Ctl.Examples.ChangeGeneration (checkChangeOutputsDistribution) where
 import Prelude
 
 import Contract.BalanceTxConstraints (mustSendChangeWithDatum)
-import Contract.Monad (Contract, liftedE)
+import Contract.Monad (Contract)
 import Contract.PlutusData
   ( Datum(Datum)
   , OutputDatum(OutputDatum)
@@ -26,12 +26,12 @@ import Contract.UnbalancedTx (mkUnbalancedTx)
 import Contract.Value as Value
 import Contract.Wallet (ownPaymentPubKeyHashes, ownStakePubKeyHashes)
 import Ctl.Examples.AlwaysSucceeds as AlwaysSucceeds
-import Data.Array (fold, length, replicate, zip)
-import Data.BigInt (fromInt) as BigInt
+import Data.Array (fold, length, replicate, take, zip)
 import Data.Lens (to, (^.))
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(Tuple))
+import JS.BigInt (fromInt) as BigInt
 import Test.Spec.Assertions (shouldEqual)
 
 -- | A contract that creates `outputsToScript` number of outputs at a script address,
@@ -47,13 +47,14 @@ checkChangeOutputsDistribution outputsToScript outputsToSelf expectedOutputs =
       vhash = validatorHash validator
       value = Value.lovelaceValueOf $ BigInt.fromInt 1000001
 
-      constraintsToSelf :: TxConstraints Unit Unit
-      constraintsToSelf = fold <<< fold $ replicate outputsToSelf
+      constraintsToSelf :: TxConstraints
+      constraintsToSelf = fold <<< take outputsToSelf <<< fold
+        $ replicate outputsToSelf
         $ zip pkhs skhs <#> \(Tuple pkh mbSkh) -> case mbSkh of
             Nothing -> Constraints.mustPayToPubKey pkh value
             Just skh -> Constraints.mustPayToPubKeyAddress pkh skh value
 
-      constraintsToScripts :: TxConstraints Unit Unit
+      constraintsToScripts :: TxConstraints
       constraintsToScripts = fold $ replicate outputsToScript
         $ Constraints.mustPayToScript vhash unitDatum
             Constraints.DatumWitness
@@ -61,10 +62,10 @@ checkChangeOutputsDistribution outputsToScript outputsToSelf expectedOutputs =
 
       constraints = constraintsToSelf <> constraintsToScripts
 
-      lookups :: Lookups.ScriptLookups PlutusData
+      lookups :: Lookups.ScriptLookups
       lookups = mempty
-    unbalancedTx <- liftedE $ mkUnbalancedTx lookups constraints
-    balancedTx <- liftedE $ balanceTxWithConstraints unbalancedTx
+    unbalancedTx <- mkUnbalancedTx lookups constraints
+    balancedTx <- balanceTxWithConstraints unbalancedTx
       -- just to check that attaching datums works
       ( mustSendChangeWithDatum $ OutputDatum $ Datum $ Integer $ BigInt.fromInt
           1000

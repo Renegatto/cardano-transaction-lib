@@ -1,41 +1,42 @@
-/* global BROWSER_RUNTIME */
+import * as lib from "@mlabs-haskell/cardano-serialization-lib-gc";
 
-let lib;
-if (typeof BROWSER_RUNTIME != "undefined" && BROWSER_RUNTIME) {
-  lib = require("@emurgo/cardano-serialization-lib-browser");
-} else {
-  lib = require("@emurgo/cardano-serialization-lib-nodejs");
+export function bnCompare(lhs) {
+  return rhs => lhs.compare(rhs);
 }
-lib = require("@mlabs-haskell/csl-gc-wrapper")(lib);
 
-exports.bnCompare = lhs => rhs => lhs.compare(rhs);
+export const zero = lib.BigNum.zero();
+export const one = lib.BigNum.one();
 
-exports.zero = lib.BigNum.zero();
+export function bnAdd(maybe) {
+  return lhs => rhs => {
+    try {
+      return maybe.just(lhs.checked_add(rhs));
+    } catch (_) {
+      return maybe.nothing;
+    }
+  };
+}
 
-exports.one = lib.BigNum.one();
+export function bnMul(maybe) {
+  return lhs => rhs => {
+    try {
+      return maybe.just(lhs.checked_mul(rhs));
+    } catch (_) {
+      return maybe.nothing;
+    }
+  };
+}
 
-exports.bnAdd = maybe => lhs => rhs => {
-  try {
-    return maybe.just(lhs.checked_add(rhs));
-  } catch (_) {
-    return maybe.nothing;
-  }
-};
+export function _fromString(maybe) {
+  return str => {
+    try {
+      return maybe.just(lib.BigNum.from_str(str));
+    } catch (_) {
+      return maybe.nothing;
+    }
+  };
+}
 
-exports.bnMul = maybe => lhs => rhs => {
-  try {
-    return maybe.just(lhs.checked_mul(rhs));
-  } catch (_) {
-    return maybe.nothing;
-  }
-};
-
-exports._fromString = maybe => str => {
-  try {
-    return maybe.just(lib.BigNum.from_str(str));
-  } catch (_) {
-    return maybe.nothing;
-  }
-};
-
-exports.toString = bn => bn.to_str();
+export function toString(bn) {
+  return bn.to_str();
+}

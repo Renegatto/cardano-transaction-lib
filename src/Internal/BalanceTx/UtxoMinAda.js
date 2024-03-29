@@ -1,20 +1,19 @@
-/* global BROWSER_RUNTIME */
+import * as lib from "@mlabs-haskell/cardano-serialization-lib-gc";
 
-let lib;
-if (typeof BROWSER_RUNTIME != "undefined" && BROWSER_RUNTIME) {
-  lib = require("@emurgo/cardano-serialization-lib-browser");
-} else {
-  lib = require("@emurgo/cardano-serialization-lib-nodejs");
+export function minAdaForOutput(maybe) {
+  return txOutput => dataCost => {
+    try {
+      return maybe.just(lib.min_ada_for_output(txOutput, dataCost));
+    } catch (_) {
+      return maybe.nothing;
+    }
+  };
 }
-lib = require("@mlabs-haskell/csl-gc-wrapper")(lib);
 
-exports.minAdaForOutput = maybe => txOutput => dataCost => {
-  try {
-    return maybe.just(lib.min_ada_for_output(txOutput, dataCost));
-  } catch (_) {
-    return maybe.nothing;
-  }
-};
+export function newCoinsPerWord(n) {
+  return lib.DataCost.new_coins_per_word(n);
+}
 
-exports.newCoinsPerWord = n => lib.DataCost.new_coins_per_word(n);
-exports.newCoinsPerByte = n => lib.DataCost.new_coins_per_byte(n);
+export function newCoinsPerByte(n) {
+  return lib.DataCost.new_coins_per_byte(n);
+}
