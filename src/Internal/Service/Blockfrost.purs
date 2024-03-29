@@ -56,6 +56,7 @@ module Ctl.Internal.Service.Blockfrost
   , runBlockfrostServiceTestM
   , submitTx
   , utxosAt
+  , utxosAtScriptHash
   ) where
 
 import Prelude
@@ -562,6 +563,10 @@ utxosAt address = runExceptT $
     case Array.length (unwrap utxos) < maxNumResultsOnPage of
       true -> pure utxos
       false -> append utxos <$> ExceptT (utxosAtAddressOnPage $ page + 1)
+
+utxosAtScriptHash
+  :: ScriptHash -> BlockfrostServiceM (Either ClientError UtxoMap)
+utxosAtScriptHash _address = pure (Left $ ClientOtherError "Not Implemented")
 
 getUtxoByOref
   :: TransactionInput
@@ -1577,3 +1582,4 @@ instance DecodeAeson BlockfrostRewards where
       { pool_id
       , withdrawable_amount
       }
+

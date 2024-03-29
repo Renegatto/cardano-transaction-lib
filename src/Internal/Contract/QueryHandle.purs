@@ -25,6 +25,7 @@ import Ctl.Internal.QueryM.Kupo
   , getUtxoByOref
   , isTxConfirmed
   , utxosAt
+  , utxosAtScriptHash
   ) as Kupo
 import Ctl.Internal.QueryM.Ogmios (SubmitTxR(SubmitFail, SubmitTxSuccess))
 import Ctl.Internal.QueryM.Pools
@@ -60,6 +61,7 @@ queryHandleForCtlBackend runQueryM params backend =
   , doesTxExist: runQueryM' <<< map (map isJust) <<< Kupo.isTxConfirmed
   , getTxMetadata: runQueryM' <<< Kupo.getTxMetadata
   , utxosAt: runQueryM' <<< Kupo.utxosAt
+  , utxosAtScriptHash: runQueryM' <<< Kupo.utxosAtScriptHash
   , getChainTip: Right <$> runQueryM' QueryM.getChainTip
   , getCurrentEpoch: runQueryM' QueryM.getCurrentEpoch
   , submitTx: \tx -> runQueryM' do
@@ -100,6 +102,7 @@ queryHandleForBlockfrostBackend logParams backend =
   , doesTxExist: runBlockfrostServiceM' <<< Blockfrost.doesTxExist
   , getTxMetadata: runBlockfrostServiceM' <<< Blockfrost.getTxMetadata
   , utxosAt: runBlockfrostServiceM' <<< Blockfrost.utxosAt
+  , utxosAtScriptHash: runBlockfrostServiceM' <<< Blockfrost.utxosAtScriptHash
   , getChainTip: runBlockfrostServiceM' Blockfrost.getChainTip
   , getCurrentEpoch:
       runBlockfrostServiceM' Blockfrost.getCurrentEpoch >>= case _ of
