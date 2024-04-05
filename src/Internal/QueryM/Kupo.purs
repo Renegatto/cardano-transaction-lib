@@ -7,6 +7,7 @@ module Ctl.Internal.QueryM.Kupo
   , isTxConfirmed
   , isTxConfirmedAff
   , utxosAt
+  , utxosAtScriptHash
   ) where
 
 import Prelude
@@ -117,6 +118,15 @@ import JS.BigInt (BigInt)
 utxosAt :: Address -> QueryM (Either ClientError UtxoMap)
 utxosAt address = runExceptT do
   let endpoint = "/matches/" <> addressBech32 address <> "?unspent"
+  kupoUtxoMap <- ExceptT $ handleAffjaxResponse <$> kupoGetRequest endpoint
+  ExceptT $ resolveKupoUtxoMap kupoUtxoMap
+
+utxosAtScriptHash :: ScriptHash -> QueryM (Either ClientError UtxoMap)
+utxosAtScriptHash scriptHash = runExceptT do
+  let
+    endpoint = "/matches/" <> rawBytesToHex (scriptHashToBytes scriptHash)
+      <> "/*"
+      <> "?unspent"
   kupoUtxoMap <- ExceptT $ handleAffjaxResponse <$> kupoGetRequest endpoint
   ExceptT $ resolveKupoUtxoMap kupoUtxoMap
 
