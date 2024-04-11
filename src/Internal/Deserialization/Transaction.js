@@ -77,8 +77,8 @@ export const _txBodyValidityStartInterval = maybeGetter(
   "validity_start_interval_bignum"
 );
 
-// multiassets(): Mint | void;
-export const _txBodyMultiAssets = maybeGetter("multiassets");
+// mint(): Mint | void;
+export const _txBodyMint = maybeGetter("mint");
 
 export function _txBodyReferenceInputs(maybe) {
   return containerhelper => body =>
@@ -137,6 +137,10 @@ export function _unpackMint(containerhelper) {
 
 export function _unpackMintAssets(containerhelper) {
   return containerhelper.unpackKeyIndexed;
+}
+
+export function _unpackMintsAssets(containerhelper) {
+  return containerhelper.unpack;
 }
 
 export function _convertCert(certConvHelper) {

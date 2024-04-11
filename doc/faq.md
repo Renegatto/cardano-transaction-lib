@@ -181,7 +181,6 @@ If the different derivation builders that `purescriptProject` gives you out-of-t
   # project in different components
   specialPackage = pkgs.runCommand "my-special-package"
     {
-      NODE_PATH = "${project.nodeModules}/lib/node_modules";
     }
     ''
       cp -r ${project.compiled}/* .
