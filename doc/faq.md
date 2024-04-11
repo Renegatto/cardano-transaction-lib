@@ -90,7 +90,9 @@ To do anything time-related, it's best to rely on local node chain tip time, ins
 
 ### Q: Time/slot conversion functions return `Nothing`. Why is that?
 
-Time/slot conversion functions depend on `eraSummaries` [Ogmios local state query](https://ogmios.dev/mini-protocols/local-state-query/), that returns era bounds and slotting parameters details, required for proper slot arithmetic. The most common source of the problem is that Ogmios does not return enough epochs into the future.
+Time/slot conversion functions depend on `eraSummaries` [Ogmios local state query](https://ogmios.dev/mini-protocols/local-state-query/), that returns era bounds and slotting parameters details, required for proper slot arithmetic. The most common source of the problem is that Ogmios does not return enough epochs into the future. [A possible symptom](https://github.com/Plutonomicon/cardano-transaction-lib/issues/1057) is `CannotFindTimeInEraSummaries` in the error message.
+
+When using Plutip, a solution may be [to increase the `epochSize` parameter](https://github.com/Plutonomicon/cardano-transaction-lib/issues/1057#issuecomment-1450692539).
 
 ### Q: I'm getting `Uncomputable slot arithmetic; transaction's validity bounds go beyond the foreseeable end of the current era: PastHorizon`
 
@@ -179,7 +181,6 @@ If the different derivation builders that `purescriptProject` gives you out-of-t
   # project in different components
   specialPackage = pkgs.runCommand "my-special-package"
     {
-      NODE_PATH = "${project.nodeModules}/lib/node_modules";
     }
     ''
       cp -r ${project.compiled}/* .

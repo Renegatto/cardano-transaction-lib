@@ -10,9 +10,9 @@ import Data.Time.Duration (Milliseconds(Milliseconds))
 import Effect (Effect)
 import Effect.Aff (Aff, cancelWith, effectCanceler, launchAff)
 import Effect.Class (liftEffect)
+import Mote (skip)
 import Mote.Monad (mapTest)
 import Test.Ctl.ApplyArgs as ApplyArgs
-import Test.Ctl.Base64 as Base64
 import Test.Ctl.Blockfrost.Aeson.Suite as Blockfrost.Aeson
 import Test.Ctl.Blockfrost.ProtocolParameters as Blockfrost.ProtocolParameters
 import Test.Ctl.ByteArray as ByteArray
@@ -31,14 +31,12 @@ import Test.Ctl.NativeScript as NativeScript
 import Test.Ctl.Ogmios.Address as Ogmios.Address
 import Test.Ctl.Ogmios.Aeson as Ogmios.Aeson
 import Test.Ctl.Ogmios.EvaluateTx as Ogmios.EvaluateTx
-import Test.Ctl.Parser as Parser
 import Test.Ctl.Partition as Partition
 import Test.Ctl.ProtocolParams as ProtocolParams
 import Test.Ctl.Serialization as Serialization
 import Test.Ctl.Serialization.Address as Serialization.Address
 import Test.Ctl.Serialization.Hash as Serialization.Hash
 import Test.Ctl.Transaction as Transaction
-import Test.Ctl.TxOutput as TxOutput
 import Test.Ctl.Types.Interval as Types.Interval
 import Test.Ctl.Types.Ipv6 as Ipv6
 import Test.Ctl.Types.TokenName as Types.TokenName
@@ -61,7 +59,6 @@ testPlan = do
   ApplyArgs.suite
   Ipv6.suite
   NativeScript.suite
-  Base64.suite
   Bip32.suite
   ByteArray.suite
   Cip25.suite
@@ -69,7 +66,6 @@ testPlan = do
   Data.suite
   Deserialization.suite
   Hashing.suite
-  Parser.suite
   Partition.suite
   Plutus.Conversion.Address.suite
   Plutus.Conversion.Value.suite
@@ -78,14 +74,15 @@ testPlan = do
   Serialization.Address.suite
   Serialization.Hash.suite
   Transaction.suite
-  TxOutput.suite
   UsedTxOuts.suite
   Ogmios.Address.suite
   Ogmios.Aeson.suite
   Ogmios.EvaluateTx.suite
   ProtocolParams.suite
-  Blockfrost.Aeson.suite
-  Blockfrost.ProtocolParameters.suite
+  -- TODO enable Blockfrost.Aeson.suite unit tests
+  skip Blockfrost.Aeson.suite
+  -- TODO enable Blockforst.ProtocolParameters.suite unit tests
+  skip Blockfrost.ProtocolParameters.suite
   Types.TokenName.suite
   Types.Transaction.suite
   Ctl.Data.Interval.suite

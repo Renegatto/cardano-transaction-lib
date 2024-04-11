@@ -14,7 +14,7 @@ module Ctl.Internal.Deserialization.Transaction
   , _txBodyCollateral
   , _txBodyFee
   , _txBodyInputs
-  , _txBodyMultiAssets
+  , _txBodyMint
   , _txBodyNetworkId
   , _txBodyOutputs
   , _txBodyRequiredSigners
@@ -107,6 +107,7 @@ import Ctl.Internal.Cardano.Types.Value
   , mkNonAdaAsset
   , scriptHashAsCurrencySymbol
   )
+import Ctl.Internal.Cardano.Types.Value (CurrencySymbol) as Csl
 import Ctl.Internal.Deserialization.Error
   ( Err
   , FromCslRepError
@@ -156,6 +157,7 @@ import Ctl.Internal.Serialization.Types
   , MetadataMap
   , Mint
   , MintAssets
+  , MintsAssets
   , MultiHostName
   , NativeScripts
   , Nonce
@@ -194,8 +196,6 @@ import Ctl.Internal.Types.TransactionMetadata
   )
 import Ctl.Internal.Types.VRFKeyHash (VRFKeyHash(VRFKeyHash))
 import Data.Bifunctor (bimap, lmap)
-import Data.BigInt (BigInt)
-import Data.BigInt as BigInt
 import Data.Bitraversable (bitraverse)
 import Data.Either (Either)
 import Data.Map as M
@@ -204,10 +204,12 @@ import Data.Newtype (unwrap, wrap)
 import Data.Ratio (Ratio, reduce)
 import Data.Set (fromFoldable) as Set
 import Data.Traversable (traverse)
-import Data.Tuple.Nested (type (/\))
+import Data.Tuple.Nested (type (/\), (/\))
 import Data.UInt (UInt)
 import Data.UInt as UInt
 import Data.Variant (Variant)
+import JS.BigInt (BigInt)
+import JS.BigInt as BigInt
 import Type.Row (type (+))
 
 -- | Deserializes CBOR encoded transaction to a CTL's native type.
@@ -297,7 +299,7 @@ convertTxBody txBody = do
           _txBodyAuxiliaryDataHash maybeFfiHelper txBody
     , validityStartInterval:
         Slot <$> _txBodyValidityStartInterval maybeFfiHelper txBody
-    , mint: map convertMint $ _txBodyMultiAssets maybeFfiHelper txBody
+    , mint: map convertMint $ _txBodyMint maybeFfiHelper txBody
     , referenceInputs
     , scriptDataHash: convertScriptDataHash <$> _txBodyScriptDataHash
         maybeFfiHelper
@@ -441,16 +443,34 @@ convertPoolRetirement poolKeyHash epoch = do
   T.PoolRetirement { poolKeyHash: wrap $ wrap poolKeyHash, epoch: wrap epoch }
 
 convertMint :: Csl.Mint -> T.Mint
-convertMint mint = T.Mint $ mkNonAdaAsset
-  $
-    -- outer map
-    M.fromFoldable <<< map (lmap scriptHashAsCurrencySymbol)
-      -- inner map
-      <<< (map <<< map)
-        ( M.fromFoldable <<< map convAssetName <<< _unpackMintAssets
-            containerHelper
-        )
-  $ _unpackMint containerHelper mint
+convertMint =
+  let
+    outerMap
+      :: Array (Csl.ScriptHash /\ M.Map TokenName BigInt)
+      -> M.Map Csl.CurrencySymbol (M.Map TokenName BigInt)
+    outerMap = M.fromFoldable <<< map (lmap scriptHashAsCurrencySymbol)
+
+    innerMap
+      :: Array (Csl.ScriptHash /\ Csl.MintAssets)
+      -> M.Map Csl.CurrencySymbol (M.Map TokenName BigInt)
+    innerMap = outerMap <<< (map <<< map)
+      ( M.fromFoldable <<< map convAssetName <<< _unpackMintAssets
+          containerHelper
+      )
+
+    mintsMap
+      :: Array (Csl.ScriptHash /\ Csl.MintsAssets)
+      -> Array (Csl.ScriptHash /\ Csl.MintAssets)
+    mintsMap ss = do
+      (hash /\ assets) <- ss
+      asset <- _unpackMintsAssets containerHelper assets
+      pure (hash /\ asset)
+  in
+    T.Mint
+      <<< mkNonAdaAsset
+      <<< innerMap
+      <<< mintsMap
+      <<< _unpackMint containerHelper
 
   where
   convAssetName :: Csl.AssetName /\ Int.Int -> TokenName /\ BigInt
@@ -778,8 +798,8 @@ foreign import _txBodyAuxiliaryDataHash
 foreign import _txBodyValidityStartInterval
   :: MaybeFfiHelper -> Csl.TransactionBody -> Maybe Csl.BigNum
 
--- multiassets(): Mint | void
-foreign import _txBodyMultiAssets
+-- mint(): Mint | void
+foreign import _txBodyMint
   :: MaybeFfiHelper -> Csl.TransactionBody -> Maybe Csl.Mint
 
 -- reference_inputs(): TransactionInputs | void;
@@ -840,10 +860,13 @@ foreign import _unpackUpdate
      }
 
 foreign import _unpackMint
-  :: ContainerHelper -> Csl.Mint -> Array (Csl.ScriptHash /\ Csl.MintAssets)
+  :: ContainerHelper -> Csl.Mint -> Array (Csl.ScriptHash /\ Csl.MintsAssets)
 
 foreign import _unpackMintAssets
   :: ContainerHelper -> Csl.MintAssets -> Array (Csl.AssetName /\ Csl.Int)
+
+foreign import _unpackMintsAssets
+  :: ContainerHelper -> Csl.MintsAssets -> Array Csl.MintAssets
 
 type CertConvHelper (r :: Type) =
   { stakeDeregistration :: Csl.StakeCredential -> r

@@ -64,21 +64,20 @@ import Prelude
 import Aeson
   ( class DecodeAeson
   , Aeson
-  , Finite
   , JsonDecodeError(TypeMismatch, MissingValue, AtKey)
   , decodeAeson
   , decodeJsonString
+  , encodeAeson
   , getField
   , getFieldOptional
   , getFieldOptional'
   , isNull
   , parseJsonStringToAeson
   , stringifyAeson
-  , unpackFinite
   , (.:)
   , (.:!)
   )
-import Affjax (Error, Response, URL, defaultRequest, printError, request) as Affjax
+import Affjax (Error, Response, URL, defaultRequest, printError) as Affjax
 import Affjax.RequestBody (RequestBody, arrayView, string) as Affjax
 import Affjax.RequestHeader (RequestHeader(ContentType, RequestHeader)) as Affjax
 import Affjax.ResponseFormat (string) as Affjax.ResponseFormat
@@ -94,9 +93,11 @@ import Control.Monad.Except.Trans (ExceptT(ExceptT), runExceptT)
 import Control.Monad.Logger.Class (log)
 import Control.Monad.Logger.Trans (LoggerT(LoggerT), runLoggerT)
 import Control.Monad.Maybe.Trans (MaybeT(MaybeT), runMaybeT)
+import Control.Monad.Reader (ReaderT(ReaderT))
 import Control.Monad.Reader.Class (ask, asks)
 import Control.Monad.Reader.Trans (ReaderT, runReaderT)
 import Control.Parallel (parTraverse)
+import Ctl.Internal.Affjax (request) as Affjax
 import Ctl.Internal.Cardano.Types.NativeScript
   ( NativeScript
       ( ScriptAll
@@ -137,7 +138,20 @@ import Ctl.Internal.Deserialization.PlutusData (deserializeData)
 import Ctl.Internal.Deserialization.Transaction
   ( convertGeneralTransactionMetadata
   )
-import Ctl.Internal.QueryM.Ogmios (TxEvaluationR)
+import Ctl.Internal.QueryM.Ogmios
+  ( AdditionalUtxoSet
+  , ExecutionUnits
+  , OgmiosDatum
+  , OgmiosScript
+  , OgmiosTxIn
+  , RedeemerPointer
+  , ScriptFailure
+  , TxEvaluationFailure(ScriptFailures, UnparsedError)
+  , TxEvaluationR
+  , TxEvaluationResult(TxEvaluationResult)
+  , decodeRedeemerPointer
+  )
+import Ctl.Internal.QueryM.Ogmios as Ogmios
 import Ctl.Internal.QueryM.Pools (DelegationsAndRewards)
 import Ctl.Internal.Serialization as Serialization
 import Ctl.Internal.Serialization.Address
@@ -210,21 +224,21 @@ import Ctl.Internal.Types.TransactionMetadata
   )
 import Data.Array (find, length) as Array
 import Data.Bifunctor (lmap)
-import Data.BigInt (BigInt)
-import Data.BigInt (fromString, toNumber) as BigInt
 import Data.BigNumber (BigNumber, toFraction)
 import Data.BigNumber as BigNumber
 import Data.DateTime.Instant (instant, toDateTime)
-import Data.Either (Either(Left, Right), either, note)
+import Data.Either (Either(Left, Right), either, hush, note)
 import Data.Foldable (fold)
 import Data.Generic.Rep (class Generic)
 import Data.HTTP.Method (Method(GET, POST))
 import Data.JSDate (JSDate, now)
 import Data.Log.Level (LogLevel(Trace))
 import Data.Log.Message (Message)
+import Data.Map (Map)
 import Data.Map (empty, fromFoldable, isEmpty, unions) as Map
 import Data.Maybe (Maybe(Just, Nothing), fromMaybe, maybe)
 import Data.MediaType (MediaType(MediaType))
+import Data.MediaType.Common (applicationJSON) as MediaType
 import Data.Newtype (class Newtype, unwrap, wrap)
 import Data.Number (infinity)
 import Data.Show.Generic (genericShow)
@@ -239,6 +253,9 @@ import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (error)
 import Foreign.Object (Object)
+import Foreign.Object as ForeignObject
+import JS.BigInt (BigInt)
+import JS.BigInt (fromInt, fromString, toNumber) as BigInt
 
 --------------------------------------------------------------------------------
 -- BlockfrostServiceM
@@ -315,7 +332,7 @@ data BlockfrostEndpoint
   | DatumCbor DataHash
   -- /network/eras
   | EraSummaries
-  -- /utils/txs/evaluate
+  -- /utils/txs/evaluate/utxos
   | EvaluateTransaction
   -- /blocks/latest
   | LatestBlock
@@ -363,7 +380,7 @@ realizeEndpoint endpoint =
     EraSummaries ->
       "/network/eras"
     EvaluateTransaction ->
-      "/utils/txs/evaluate"
+      "/utils/txs/evaluate/utxos"
     LatestBlock ->
       "/blocks/latest"
     LatestEpoch ->
@@ -642,10 +659,10 @@ submitTx tx = do
     blockfrostPostRequest SubmitTransaction (MediaType "application/cbor")
       (Just $ Affjax.arrayView $ unwrap $ unwrap cbor)
 
-evaluateTx :: Transaction -> BlockfrostServiceM TxEvaluationR
-evaluateTx tx = do
-  cslTx <- liftEffect $ Serialization.convertTransaction tx
-  resp <- handleBlockfrostResponse <$> request (Serialization.toBytes cslTx)
+evaluateTx
+  :: Transaction -> AdditionalUtxoSet -> BlockfrostServiceM TxEvaluationR
+evaluateTx tx additionalUtxos = do
+  resp <- handleBlockfrostResponse <$> request
   case unwrapBlockfrostEvaluateTx <$> resp of
     Left err -> throwError $ error $ show err
     Right (Left err) ->
@@ -654,13 +671,16 @@ evaluateTx tx = do
         err
     Right (Right eval) -> pure eval
   where
-  -- Hex encoded, not binary like submission
-  request
-    :: CborBytes
-    -> BlockfrostServiceM (Either Affjax.Error (Affjax.Response String))
-  request cbor =
-    blockfrostPostRequest EvaluateTransaction (MediaType "application/cbor")
-      (Just $ Affjax.string $ cborBytesToHex cbor)
+  request :: BlockfrostServiceM (Either Affjax.Error (Affjax.Response String))
+  request = do
+    cslTx <- liftEffect $ Serialization.convertTransaction tx
+    blockfrostPostRequest EvaluateTransaction MediaType.applicationJSON
+      ( Just $ Affjax.string $ stringifyAeson $
+          encodeAeson
+            { cbor: cborBytesToHex $ Serialization.toBytes cslTx
+            , additionalUtxoSet: additionalUtxos
+            }
+      )
 
 --------------------------------------------------------------------------------
 -- Check transaction confirmation status
@@ -857,8 +877,8 @@ instance DecodeAeson BlockfrostEraSummaries where
       where
       -- Blockfrost returns `slotLength` in seconds, and we use milliseconds,
       -- so we need to convert between them.
-      slotLengthFactor :: Number
-      slotLengthFactor = 1000.0
+      slotLengthFactor :: BigInt
+      slotLengthFactor = BigInt.fromInt 1000
 
 --------------------------------------------------------------------------------
 -- BlockfrostEvaluateTx
@@ -876,14 +896,175 @@ instance DecodeAeson BlockfrostEvaluateTx where
     where
     success :: Either JsonDecodeError (Either Aeson TxEvaluationR)
     success = do
-      { result } :: { result :: TxEvaluationR } <- decodeAeson aeson
-      pure $ Right result
+      { result: BlockfrostTxEvaluationR res }
+        :: { result :: BlockfrostTxEvaluationR } <- decodeAeson aeson
+      pure $ Right res
 
     failure :: Either JsonDecodeError (Either Aeson TxEvaluationR)
     failure = pure $ Left aeson
 
 unwrapBlockfrostEvaluateTx :: BlockfrostEvaluateTx -> Either Aeson TxEvaluationR
 unwrapBlockfrostEvaluateTx (BlockfrostEvaluateTx ei) = ei
+
+--
+-- TxEvaluationR parsing
+--
+
+-- | Wrapper for Aeson parsing.
+--
+-- Blockfrost returns on evaluateTx endpoint an ogmios response from the older Ogmios v5.6!
+-- Ogmios backed parses against Ogmios v6, here we parse using the previous code for Ogmios.
+--
+-- Note: TxEvaluationFailure as part of BlockfrostTxEvaluation doesn't parse with it's DecodeAeson instance.
+newtype BlockfrostTxEvaluationR = BlockfrostTxEvaluationR TxEvaluationR
+
+instance DecodeAeson BlockfrostTxEvaluationR where
+  decodeAeson aeson = BlockfrostTxEvaluationR <$>
+    ( (wrap <<< Right <$> decodeBlockfrostTxEvaluationResult aeson) <|>
+        (wrap <<< Left <$> decodeBlockfrostTxEvaluationFailure aeson)
+    )
+
+decodeBlockfrostTxEvaluationResult
+  :: Aeson -> Either JsonDecodeError TxEvaluationResult
+decodeBlockfrostTxEvaluationResult = aesonObject $ \obj -> do
+  rdmrPtrExUnitsList :: Array (String /\ Aeson) <-
+    ForeignObject.toUnfoldable <$> getField obj "EvaluationResult"
+  TxEvaluationResult <<< Map.fromFoldable <$>
+    traverse decodeRdmrPtrExUnitsItem rdmrPtrExUnitsList
+  where
+  decodeRdmrPtrExUnitsItem
+    :: String /\ Aeson
+    -> Either JsonDecodeError (RedeemerPointer /\ ExecutionUnits)
+  decodeRdmrPtrExUnitsItem (redeemerPtrRaw /\ exUnitsAeson) = do
+    redeemerPtr <- decodeRedeemerPointer redeemerPtrRaw
+    flip aesonObject exUnitsAeson $ \exUnitsObj -> do
+      memory <- getField exUnitsObj "memory"
+      steps <- getField exUnitsObj "steps"
+      pure $ redeemerPtr /\ { memory, steps }
+
+data OldScriptFailure
+  = ExtraRedeemers (Array RedeemerPointer)
+  | MissingRequiredDatums
+      { provided :: Maybe (Array OgmiosDatum), missing :: Array OgmiosDatum }
+  | MissingRequiredScripts
+      { resolved :: Map RedeemerPointer OgmiosScript
+      , missing :: Array OgmiosScript
+      }
+  | ValidatorFailed { error :: String, traces :: Array String }
+  | UnknownInputReferencedByRedeemer OgmiosTxIn
+  | NonScriptInputReferencedByRedeemer OgmiosTxIn
+  | IllFormedExecutionBudget (Maybe ExecutionUnits)
+  | NoCostModelForLanguage String
+
+type ObjectParser = ReaderT (Object Aeson) (Either JsonDecodeError)
+
+liftField
+  :: forall (a :: Type) (b :: Type)
+   . DecodeAeson a
+  => String
+  -> (a -> Either JsonDecodeError b)
+  -> ObjectParser b
+liftField f act = ReaderT (flip getField f >=> act)
+
+instance DecodeAeson OldScriptFailure where
+  decodeAeson = aesonObject $ runReaderT cases
+    where
+    cases :: ObjectParser OldScriptFailure
+    cases = decodeExtraRedeemers
+      <|> decodeMissingRequiredDatums
+      <|> decodeMissingRequiredScripts
+      <|> decodeValidatorFailed
+      <|> decodeUnknownInputReferencedByRedeemer
+      <|> decodeNonScriptInputReferencedByRedeemer
+      <|> decodeIllFormedExecutionBudget
+      <|> decodeNoCostModelForLanguage
+      <|> defaultCase
+
+    defaultCase :: ObjectParser OldScriptFailure
+    defaultCase = ReaderT $ const $ Left $ TypeMismatch "Expected ScriptFailure"
+
+    decodeExtraRedeemers :: ObjectParser OldScriptFailure
+    decodeExtraRedeemers = ExtraRedeemers <$> liftField "extraRedeemers"
+      (traverse decodeRedeemerPointer)
+
+    decodeMissingRequiredDatums :: ObjectParser OldScriptFailure
+    decodeMissingRequiredDatums = liftField "missingRequiredDatums" \o -> do
+      pure $ MissingRequiredDatums o
+
+    decodeMissingRequiredScripts :: ObjectParser OldScriptFailure
+    decodeMissingRequiredScripts = liftField "missingRequiredScripts" \o -> do
+      resolvedKV <- ForeignObject.toUnfoldable <$> getField o "resolved"
+      resolved <- Map.fromFoldable <$> for (resolvedKV :: Array _)
+        \(k /\ v) -> (_ /\ v) <$> decodeRedeemerPointer k
+      missing <- getField o "missing"
+      pure $ MissingRequiredScripts { resolved, missing }
+
+    decodeValidatorFailed :: ObjectParser OldScriptFailure
+    decodeValidatorFailed = liftField "validatorFailed" \o -> do
+      pure $ ValidatorFailed o
+
+    decodeUnknownInputReferencedByRedeemer :: ObjectParser OldScriptFailure
+    decodeUnknownInputReferencedByRedeemer = liftField
+      "unknownInputReferencedByRedeemer"
+      \o -> do
+        pure $ UnknownInputReferencedByRedeemer o
+
+    decodeNonScriptInputReferencedByRedeemer :: ObjectParser OldScriptFailure
+    decodeNonScriptInputReferencedByRedeemer = liftField
+      "nonScriptInputReferencedByRedeemer"
+      \o -> do
+        pure $ NonScriptInputReferencedByRedeemer o
+
+    decodeIllFormedExecutionBudget :: ObjectParser OldScriptFailure
+    decodeIllFormedExecutionBudget = liftField "illFormedExecutionBudget" \o ->
+      do
+        pure $ IllFormedExecutionBudget o
+
+    decodeNoCostModelForLanguage :: ObjectParser OldScriptFailure
+    decodeNoCostModelForLanguage = liftField "noCostModelForLanguage" \o -> do
+      pure $ NoCostModelForLanguage o
+
+decodeBlockfrostTxEvaluationFailure
+  :: Aeson -> Either JsonDecodeError TxEvaluationFailure
+decodeBlockfrostTxEvaluationFailure = aesonObject $ runReaderT cases
+  where
+  cases :: ObjectParser TxEvaluationFailure
+  cases = decodeScriptFailures <|> defaultCase
+
+  defaultCase :: ObjectParser TxEvaluationFailure
+  defaultCase = ReaderT \o ->
+    pure (UnparsedError (stringifyAeson (encodeAeson o)))
+
+  -- translate Ogmios v5.6 ScriptFailures to Ogmios v6
+  translateOldToNew :: OldScriptFailure -> Either JsonDecodeError ScriptFailure
+  translateOldToNew x = case x of
+    ExtraRedeemers ptrs -> pure $ Ogmios.ExtraRedeemers ptrs
+    MissingRequiredDatums { provided, missing } -> pure $
+      Ogmios.MissingRequiredDatums { missing, provided: provided }
+    MissingRequiredScripts { resolved: resolved0, missing: missing0 } -> do
+      missing <- traverse decodeRedeemerPointer missing0
+      resolved :: Map RedeemerPointer ScriptHash <- traverse decodeAeson
+        (map (encodeAeson :: String -> _) resolved0)
+      pure $ Ogmios.MissingRequiredScripts { missing, resolved: Just resolved }
+    ValidatorFailed { error, traces } -> pure $ Ogmios.ValidatorFailed
+      { error, traces }
+    UnknownInputReferencedByRedeemer txin -> pure $
+      Ogmios.UnknownInputReferencedByRedeemer [ txin ]
+    NonScriptInputReferencedByRedeemer txin -> pure $
+      Ogmios.NonScriptInputReferencedByRedeemer txin
+    IllFormedExecutionBudget mexu -> pure $
+      Ogmios.IllFormedExecutionBudget mexu
+    NoCostModelForLanguage lang -> pure $ Ogmios.NoCostModelForLanguage [ lang ]
+
+  decodeScriptFailures :: ObjectParser TxEvaluationFailure
+  decodeScriptFailures = ReaderT \o -> do
+    scriptFailuresKV <- ForeignObject.toUnfoldable
+      <$> (getField o "EvaluationFailure" >>= flip getField "ScriptFailures")
+    scriptFailures <- Map.fromFoldable <$> for (scriptFailuresKV :: Array _)
+      \(k /\ v) -> do
+        v' <- traverse translateOldToNew =<< decodeAeson v
+        (_ /\ v') <$> decodeRedeemerPointer k
+    pure $ ScriptFailures scriptFailures
 
 --------------------------------------------------------------------------------
 -- BlockfrostUtxosAtAddress / BlockfrostUtxosOfTransaction
@@ -1236,13 +1417,24 @@ blockfrostStakeCredentialToBech32 = case _ of
 -- BlockfrostProtocolParameters
 --------------------------------------------------------------------------------
 
--- | `Stringed a` decodes an `a` who was encoded as a `String`
+-- | `Stringed a` decodes an `a` that was encoded as a `String`
 newtype Stringed a = Stringed a
 
 derive instance Newtype (Stringed a) _
 
 instance DecodeAeson a => DecodeAeson (Stringed a) where
   decodeAeson = decodeAeson >=> decodeJsonString >=> Stringed >>> pure
+
+newtype FiniteBigNumber = FiniteBigNumber BigNumber
+
+derive instance Newtype FiniteBigNumber _
+
+instance DecodeAeson FiniteBigNumber where
+  decodeAeson aeson = do
+    number <- decodeAeson aeson
+    map FiniteBigNumber $ note (TypeMismatch "BigNumber") $ hush
+      $ BigNumber.parseBigNumber
+      $ show (number :: Number)
 
 type BlockfrostProtocolParametersRaw =
   { "min_fee_a" :: UInt
@@ -1254,9 +1446,9 @@ type BlockfrostProtocolParametersRaw =
   , "pool_deposit" :: Stringed BigInt
   , "e_max" :: BigInt
   , "n_opt" :: UInt
-  , "a0" :: Finite BigNumber
-  , "rho" :: Finite BigNumber
-  , "tau" :: Finite BigNumber
+  , "a0" :: FiniteBigNumber
+  , "rho" :: FiniteBigNumber
+  , "tau" :: FiniteBigNumber
   , "protocol_major_ver" :: UInt
   , "protocol_minor_ver" :: UInt
   , "min_pool_cost" :: Stringed BigInt
@@ -1264,8 +1456,8 @@ type BlockfrostProtocolParametersRaw =
       { "PlutusV1" :: { | CostModelV1 }
       , "PlutusV2" :: { | CostModelV2 }
       }
-  , "price_mem" :: Finite BigNumber
-  , "price_step" :: Finite BigNumber
+  , "price_mem" :: FiniteBigNumber
+  , "price_step" :: FiniteBigNumber
   , "max_tx_ex_mem" :: Stringed BigInt
   , "max_tx_ex_steps" :: Stringed BigInt
   , "max_block_ex_mem" :: Stringed BigInt
@@ -1277,15 +1469,15 @@ type BlockfrostProtocolParametersRaw =
   , "coins_per_utxo_word" :: Maybe (Stringed BigInt)
   }
 
-toFraction' :: Finite BigNumber -> String /\ String
+toFraction' :: BigNumber -> String /\ String
 toFraction' bn =
   (BigNumber.toString numerator /\ BigNumber.toString denominator)
   where
-  (numerator /\ denominator) = toFraction (unpackFinite bn)
+  (numerator /\ denominator) = toFraction bn
     (BigNumber.fromNumber infinity)
 
-bigNumberToRational :: Finite BigNumber -> Either JsonDecodeError Rational
-bigNumberToRational bn = note (TypeMismatch "Rational") do
+bigNumberToRational :: FiniteBigNumber -> Either JsonDecodeError Rational
+bigNumberToRational (FiniteBigNumber bn) = note (TypeMismatch "Rational") do
   numerator <- BigInt.fromString numerator'
   denominator <- BigInt.fromString denominator'
   reduce numerator denominator
@@ -1293,9 +1485,9 @@ bigNumberToRational bn = note (TypeMismatch "Rational") do
   (numerator' /\ denominator') = toFraction' bn
 
 bigNumberToPrice
-  :: Finite BigNumber
+  :: FiniteBigNumber
   -> Either JsonDecodeError { numerator :: BigNum, denominator :: BigNum }
-bigNumberToPrice bn = note (TypeMismatch "Rational") do
+bigNumberToPrice (FiniteBigNumber bn) = note (TypeMismatch "Rational") do
   numerator <- BigNum.fromString numerator'
   denominator <- BigNum.fromString denominator'
   pure { numerator, denominator }

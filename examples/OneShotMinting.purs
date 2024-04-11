@@ -51,9 +51,9 @@ import Control.Monad.Error.Class (liftMaybe)
 import Control.Monad.Trans.Class (lift)
 import Ctl.Examples.Helpers (mkCurrencySymbol, mkTokenName) as Helpers
 import Data.Array (head, singleton) as Array
-import Data.BigInt (BigInt)
 import Data.Map (toUnfoldable) as Map
 import Effect.Exception (error, throw)
+import JS.BigInt (BigInt)
 
 main :: Effect Unit
 main = example testnetNamiConfig
@@ -93,12 +93,12 @@ mkContractWithAssertions exampleName mkMintingPolicy = do
   tn <- Helpers.mkTokenName "CTLNFT"
 
   let
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints =
       Constraints.mustMintValue (Value.singleton cs tn one)
         <> Constraints.mustSpendPubKeyOutput oref
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups =
       Lookups.mintingPolicy mp
         <> Lookups.unspentOutputs utxos
@@ -111,8 +111,6 @@ mkContractWithAssertions exampleName mkMintingPolicy = do
     awaitTxConfirmed txHash
     logInfo' "Tx submitted successfully!"
     pure { txFinalFee }
-
-foreign import oneShotMinting :: String
 
 oneShotMintingPolicy :: TransactionInput -> Contract MintingPolicy
 oneShotMintingPolicy =
@@ -135,3 +133,5 @@ mkOneShotMintingPolicy unappliedMintingPolicy oref =
     mintingPolicyArgs = Array.singleton (toData oref)
   in
     applyArgs unappliedMintingPolicy mintingPolicyArgs
+
+foreign import oneShotMinting :: String

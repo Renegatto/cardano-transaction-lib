@@ -90,12 +90,11 @@ import Data.Time.Duration (Milliseconds, Seconds)
 import Data.Traversable (for_, traverse, traverse_)
 import Effect (Effect)
 import Effect.Aff (Aff, ParAff, attempt, error, finally, supervise)
-import Effect.Aff.Class (liftAff)
+import Effect.Aff.Class (class MonadAff, liftAff)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Exception (Error, throw, try)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
-import MedeaPrelude (class MonadAff)
 import Record.Builder (build, merge)
 
 --------------------------------------------------------------------------------
@@ -190,7 +189,6 @@ type ContractEnv =
   , handle :: QueryHandle
   , networkId :: NetworkId
   , logLevel :: LogLevel
-  , walletSpec :: Maybe WalletSpec
   , customLogger :: Maybe (LogLevel -> Message -> Aff Unit)
   , suppressLogs :: Boolean
   , hooks :: Hooks
@@ -260,7 +258,6 @@ mkContractEnv params = do
   constants =
     { networkId: params.networkId
     , logLevel: params.logLevel
-    , walletSpec: params.walletSpec
     , customLogger: params.customLogger
     , suppressLogs: params.suppressLogs
     , hooks: params.hooks

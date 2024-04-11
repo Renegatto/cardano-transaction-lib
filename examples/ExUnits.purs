@@ -8,8 +8,7 @@ import Contract.Credential (Credential(PubKeyCredential))
 import Contract.Log (logInfo')
 import Contract.Monad (Contract, launchAff_, runContract)
 import Contract.PlutusData
-  ( PlutusData
-  , Redeemer(Redeemer)
+  ( Redeemer(Redeemer)
   , toData
   , unitDatum
   )
@@ -34,10 +33,10 @@ import Contract.Value as Value
 import Contract.Wallet (ownStakePubKeyHashes)
 import Control.Monad.Error.Class (liftMaybe)
 import Data.Array (head)
-import Data.BigInt (BigInt)
-import Data.BigInt as BigInt
 import Data.Lens (view)
 import Effect.Exception (error)
+import JS.BigInt (BigInt)
+import JS.BigInt as BigInt
 
 main :: Effect Unit
 main = example testnetNamiConfig
@@ -62,7 +61,7 @@ payToExUnits vhash = do
   -- Send to own stake credential. This is used to test mustPayToScriptAddress.
   mbStakeKeyHash <- join <<< head <$> ownStakePubKeyHashes
   let
-    constraints :: TxConstraints Unit Unit
+    constraints :: TxConstraints
     constraints =
       case mbStakeKeyHash of
         Nothing ->
@@ -78,7 +77,7 @@ payToExUnits vhash = do
             $ Value.lovelaceValueOf
             $ BigInt.fromInt 2_000_000
 
-    lookups :: Lookups.ScriptLookups PlutusData
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   submitTxFromConstraints lookups constraints
@@ -108,11 +107,11 @@ spendFromExUnits iters vhash validator txId = do
       )
       (view _input <$> head (lookupTxHash txId utxos))
   let
-    lookups :: Lookups.ScriptLookups PlutusData
+    lookups :: Lookups.ScriptLookups
     lookups = Lookups.validator validator
       <> Lookups.unspentOutputs utxos
 
-    constraints :: TxConstraints Unit Unit
+    constraints :: TxConstraints
     constraints =
       Constraints.mustSpendScriptOutput txInput (Redeemer $ toData iters)
 
@@ -120,10 +119,10 @@ spendFromExUnits iters vhash validator txId = do
   awaitTxConfirmed spendTxId
   logInfo' "Successfully spent locked values."
 
-foreign import exUnits :: String
-
 exUnitsScript :: Contract Validator
-exUnitsScript =
+exUnitsScript = do
   liftMaybe (error "Error decoding exUnits") do
     envelope <- decodeTextEnvelope exUnits
     Validator <$> plutusScriptV2FromEnvelope envelope
+
+foreign import exUnits :: String

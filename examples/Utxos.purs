@@ -35,9 +35,9 @@ import Contract.Wallet
 import Ctl.Examples.Helpers (mkCurrencySymbol, mkTokenName) as Helpers
 import Ctl.Examples.PlutusV2.OneShotMinting (oneShotMintingPolicyScriptV2)
 import Data.Array (head) as Array
-import Data.BigInt (fromInt) as BigInt
 import Data.Log.Tag (tag)
 import Data.Map (toUnfoldable) as Map
+import JS.BigInt (fromInt) as BigInt
 import Test.QuickCheck.Arbitrary (arbitrary)
 import Test.QuickCheck.Gen (randomSampleOne)
 
@@ -81,7 +81,7 @@ contract = do
     mintValue :: Value
     mintValue = Value.singleton cs0 tn0 one
 
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints = mconcat
       [ Constraints.mustMintValue mintValue
       , mustPayWithDatumAndScriptRef pkh skh datum DatumWitness plutusScriptRef
@@ -90,7 +90,7 @@ contract = do
           adaValue
       ]
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = Lookups.mintingPolicy mp0 <> Lookups.unspentOutputs utxos
 
   txHash <- submitTxFromConstraints lookups constraints
@@ -112,7 +112,7 @@ mustPayWithDatumAndScriptRef
   -> DatumPresence
   -> ScriptRef
   -> Value
-  -> Constraints.TxConstraints i o
+  -> Constraints.TxConstraints
 mustPayWithDatumAndScriptRef pkh Nothing =
   Constraints.mustPayToPubKeyWithDatumAndScriptRef pkh
 mustPayWithDatumAndScriptRef pkh (Just skh) =

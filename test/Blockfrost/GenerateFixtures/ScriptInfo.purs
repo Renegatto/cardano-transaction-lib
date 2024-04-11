@@ -35,9 +35,9 @@ import Ctl.Internal.Service.Blockfrost
   )
 import Ctl.Internal.Service.Blockfrost (getScriptInfo) as Blockfrost
 import Data.Array (zip) as Array
-import Data.BigInt (fromInt) as BigInt
 import Data.FoldableWithIndex (forWithIndex_)
 import Data.UInt (fromInt) as UInt
+import JS.BigInt (fromInt) as BigInt
 import Test.Ctl.Blockfrost.GenerateFixtures.Helpers
   ( blockfrostBackend
   , getSkeyFilepathFromEnv
@@ -96,12 +96,12 @@ generateFixtures = do
     value :: Value
     value = Value.lovelaceValueOf $ BigInt.fromInt 2_000_000
 
-    constraints :: Constraints.TxConstraints Void Void
+    constraints :: Constraints.TxConstraints
     constraints =
       mconcat $ scriptRefs <#>
         flip (mustPayToPubKeyStakeAddressWithScriptRef pkh skh) value
 
-    lookups :: Lookups.ScriptLookups Void
+    lookups :: Lookups.ScriptLookups
     lookups = mempty
 
   txHash <- submitTxFromConstraints lookups constraints

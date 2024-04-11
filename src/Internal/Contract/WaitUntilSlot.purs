@@ -29,7 +29,6 @@ import Ctl.Internal.Types.Natural as Natural
 import Ctl.Internal.Types.SystemStart (SystemStart)
 import Data.Array (length, mapMaybe)
 import Data.Bifunctor (lmap)
-import Data.BigInt as BigInt
 import Data.DateTime.Instant (unInstant)
 import Data.Either (Either(Right, Left), either)
 import Data.Foldable (maximum)
@@ -42,6 +41,8 @@ import Effect.Aff.Class (liftAff)
 import Effect.Class (liftEffect)
 import Effect.Exception (error, throw)
 import Effect.Now (now)
+import JS.BigInt (BigInt, toNumber)
+import JS.BigInt as BigInt
 
 -- | The returned slot will be no less than the slot provided as argument.
 waitUntilSlot :: Slot -> Contract Chain.Tip
@@ -94,7 +95,8 @@ waitUntilSlot targetSlot = do
                       (Chain.Tip (Chain.ChainTip { slot: currentSlot_ }))
                       | currentSlot_ >= targetSlot -> pure currentTip
                       | otherwise -> do
-                          liftAff $ delay $ Milliseconds slotLengthMs
+                          -- FIXME dangerous BigInt trucation
+                          liftAff $ delay $ Milliseconds $ toNumber slotLengthMs
                           getLag eraSummaries systemStart currentSlot_
                             >>= logLag slotLengthMs
                           fetchRepeatedly
@@ -107,11 +109,11 @@ waitUntilSlot targetSlot = do
       liftAff $ delay retryDelay
       waitUntilSlot targetSlot
   where
-  logLag :: Number -> Milliseconds -> Contract Unit
+  logLag :: BigInt -> Milliseconds -> Contract Unit
   logLag slotLengthMs (Milliseconds lag) = do
     logTrace' $
       "waitUntilSlot: current lag: " <> show lag <> " ms, "
-        <> show (lag / slotLengthMs)
+        <> show (lag / toNumber slotLengthMs)
         <> " slots."
 
 -- | Calculate difference between estimated POSIX time of a given slot

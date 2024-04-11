@@ -17,7 +17,7 @@ module Ctl.Internal.Plutip.Server
 import Prelude
 
 import Aeson (decodeAeson, encodeAeson, parseJsonStringToAeson, stringifyAeson)
-import Affjax as Affjax
+import Affjax (defaultRequest) as Affjax
 import Affjax.RequestBody as RequestBody
 import Affjax.RequestHeader as Header
 import Affjax.ResponseFormat as Affjax.ResponseFormat
@@ -25,10 +25,11 @@ import Contract.Address (NetworkId(MainnetId))
 import Contract.Chain (waitNSlots)
 import Contract.Config (defaultSynchronizationParams, defaultTimeParams)
 import Contract.Monad (Contract, ContractEnv, liftContractM, runContractInEnv)
-import Control.Monad.Error.Class (liftEither)
+import Control.Monad.Error.Class (liftEither, throwError)
 import Control.Monad.State (State, execState, modify_)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Writer (censor, execWriterT, tell)
+import Ctl.Internal.Affjax (request) as Affjax
 import Ctl.Internal.Contract.Hooks (emptyHooks)
 import Ctl.Internal.Contract.Monad
   ( buildBackend
@@ -63,6 +64,7 @@ import Ctl.Internal.Plutip.Utils (tmpdir)
 import Ctl.Internal.QueryM.UniqueId (uniqueId)
 import Ctl.Internal.Service.Error
   ( ClientError(ClientDecodeJsonError, ClientHttpError)
+  , pprintClientError
   )
 import Ctl.Internal.Test.ContractTest
   ( ContractTest(ContractTest)
@@ -83,8 +85,7 @@ import Ctl.Internal.Types.UsedTxOuts (newUsedTxOuts)
 import Ctl.Internal.Wallet.Key (PrivatePaymentKey(PrivatePaymentKey))
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.BigInt as BigInt
-import Data.Either (Either(Left), either, isLeft)
+import Data.Either (Either(Left, Right), either, isLeft)
 import Data.Foldable (sum)
 import Data.HTTP.Method as Method
 import Data.Log.Level (LogLevel)
@@ -109,9 +110,10 @@ import Effect.Aff.Retry
   , recovering
   )
 import Effect.Class (liftEffect)
-import Effect.Exception (error, throw)
+import Effect.Exception (error, message, throw)
 import Effect.Ref (Ref)
 import Effect.Ref as Ref
+import JS.BigInt as BigInt
 import Mote (bracket) as Mote
 import Mote.Description (Description(Group, Test))
 import Mote.Monad (MoteT(MoteT), mapTest)
@@ -283,13 +285,13 @@ startPlutipContractEnv
        }
 startPlutipContractEnv plutipCfg distr hooks cleanupRef = do
   configCheck plutipCfg
-  startPlutipServer'
-  ourKey /\ response <- startPlutipCluster'
-  startOgmios' response
-  startKupo' response
+  tryWithReport startPlutipServer' "Could not start Plutip server"
+  (ourKey /\ response) <- tryWithReport startPlutipCluster'
+    "Could not start Plutip cluster"
+  tryWithReport (startOgmios' response) "Could not start Ogmios"
+  tryWithReport (startKupo' response) "Could not start Kupo"
 
   hooks cleanupRef
-
   { env, printLogs, clearLogs } <- mkContractEnv'
   wallets <- mkWallets' env ourKey response
   pure
@@ -299,6 +301,17 @@ startPlutipContractEnv plutipCfg distr hooks cleanupRef = do
     , clearLogs
     }
   where
+  tryWithReport
+    :: forall (a :: Type)
+     . Aff a
+    -> String
+    -> Aff a
+  tryWithReport what prefix = do
+    result <- try what
+    case result of
+      Left err -> throwError $ error $ prefix <> ": " <> message err
+      Right result' -> pure result'
+
   -- Similar to `Aff.bracket`, except cleanup is pushed onto a stack to be run
   -- later.
   bracket
@@ -469,7 +482,7 @@ startPlutipCluster cfg keysToGenerate = do
       (Left <<< ClientHttpError)
       \{ body } -> lmap (ClientDecodeJsonError body)
         $ (decodeAeson <=< parseJsonStringToAeson) body
-  either (liftEffect <<< throw <<< show) pure res >>=
+  either (liftEffect <<< throw <<< pprintClientError) pure res >>=
     case _ of
       ClusterStartupFailure reason -> do
         liftEffect $ throw $
@@ -537,6 +550,7 @@ startOgmios cfg params = do
     , params.nodeSocketPath
     , "--node-config"
     , params.nodeConfigPath
+    , "--include-transaction-cbor"
     ]
 
 startKupo
@@ -640,7 +654,6 @@ mkClusterContractEnv plutipCfg logger customLogger = do
     , handle: mkQueryHandle plutipCfg backend
     , networkId: MainnetId
     , logLevel: plutipCfg.logLevel
-    , walletSpec: Nothing
     , customLogger: customLogger
     , suppressLogs: plutipCfg.suppressLogs
     , hooks: emptyHooks

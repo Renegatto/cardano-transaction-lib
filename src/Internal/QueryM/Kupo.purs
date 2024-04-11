@@ -22,7 +22,7 @@ import Aeson
   , getFieldOptional'
   , isNull
   )
-import Affjax (Error, Response, defaultRequest, request) as Affjax
+import Affjax (Error, Response, defaultRequest) as Affjax
 import Affjax.ResponseFormat (string) as Affjax.ResponseFormat
 import Affjax.StatusCode (StatusCode(StatusCode))
 import Contract.Log (logTrace')
@@ -32,6 +32,7 @@ import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except.Trans (ExceptT(ExceptT), except, runExceptT)
 import Control.Monad.Reader.Class (asks)
 import Control.Parallel (parTraverse)
+import Ctl.Internal.Affjax (request) as Affjax
 import Ctl.Internal.Cardano.Types.ScriptRef
   ( ScriptRef(NativeScriptRef, PlutusScriptRef)
   )
@@ -78,7 +79,11 @@ import Ctl.Internal.Types.OutputDatum
   ( OutputDatum(NoOutputDatum, OutputDatumHash, OutputDatum)
   )
 import Ctl.Internal.Types.RawBytes (rawBytesToHex)
-import Ctl.Internal.Types.Scripts (plutusV1Script, plutusV2Script)
+import Ctl.Internal.Types.Scripts
+  ( plutusV1Script
+  , plutusV2Script
+  , plutusV3Script
+  )
 import Ctl.Internal.Types.TokenName (mkTokenName)
 import Ctl.Internal.Types.Transaction
   ( TransactionHash(TransactionHash)
@@ -88,7 +93,6 @@ import Ctl.Internal.Types.TransactionMetadata (GeneralTransactionMetadata)
 import Data.Array (uncons)
 import Data.Array as Array
 import Data.Bifunctor (lmap)
-import Data.BigInt (BigInt)
 import Data.Either (Either(Left, Right), note)
 import Data.Foldable (fold)
 import Data.Generic.Rep (class Generic)
@@ -109,6 +113,7 @@ import Effect.Aff (Aff, delay)
 import Effect.Aff.Class (liftAff)
 import Foreign.Object (Object)
 import Foreign.Object (toUnfoldable) as Object
+import JS.BigInt (BigInt)
 
 --------------------------------------------------------------------------------
 -- Requests
@@ -400,7 +405,11 @@ instance DecodeAeson KupoDatum where
 -- `getScriptByHash` response parsing
 --------------------------------------------------------------------------------
 
-data KupoScriptLanguage = NativeScript | PlutusV1Script | PlutusV2Script
+data KupoScriptLanguage
+  = NativeScript
+  | PlutusV1Script
+  | PlutusV2Script
+  | PlutusV3Script
 
 derive instance Generic KupoScriptLanguage _
 
@@ -412,9 +421,10 @@ instance DecodeAeson KupoScriptLanguage where
     "native" -> pure NativeScript
     "plutus:v1" -> pure PlutusV1Script
     "plutus:v2" -> pure PlutusV2Script
+    "plutus:v3" -> pure PlutusV3Script
     invalid ->
       Left $ TypeMismatch $
-        "language: expected 'native' or 'plutus:v{1|2}', got: " <> invalid
+        "language: expected 'native' or 'plutus:v{1|2|3}', got: " <> invalid
 
 newtype KupoScriptRef = KupoScriptRef (Maybe ScriptRef)
 
@@ -438,6 +448,8 @@ instance DecodeAeson KupoScriptRef where
                 pure $ PlutusScriptRef $ plutusV1Script scriptBytes
               PlutusV2Script ->
                 pure $ PlutusScriptRef $ plutusV2Script scriptBytes
+              PlutusV3Script ->
+                pure $ PlutusScriptRef $ plutusV3Script scriptBytes
 
 -------------------------------------------------------------------------------
 -- `isTxConfirmed` response parsing
