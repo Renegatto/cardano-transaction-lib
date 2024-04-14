@@ -32,23 +32,11 @@
       flake = false;
     };
 
-    cardano-node.url = "github:input-output-hk/cardano-node/8.1.1";
+    cardano-node.url = "github:input-output-hk/cardano-node/8.8.0-pre";
 
-    ogmios-nixos = {
-      url = "github:mlabs-haskell/ogmios-nixos/78e829e9ebd50c5891024dcd1004c2ac51facd80";
-      inputs = {
-        nixpkgs.follows = "nixpkgs";
-        iohk-nix.follows = "iohk-nix";
-        haskell-nix.follows = "haskell-nix";
-        cardano-node.follows = "cardano-node";
-        ogmios-src.follows = "ogmios";
-      };
-    };
+    ogmios-nixos.url = "github:Renegatto/ogmios-nixos/0c1449a2896f475ed921ba3ea92222145a67301f";
 
-    ogmios = {
-      url = "github:CardanoSolutions/ogmios/v6.0.0";
-      flake = false;
-    };
+    ogmios.follows = "ogmios-nixos/ogmios";
 
     kupo-nixos = {
       url = "github:mlabs-haskell/kupo-nixos/6f89cbcc359893a2aea14dd380f9a45e04c6aa67";
