@@ -13,7 +13,11 @@
       url = "github:input-output-hk/hackage.nix";
       flake = false;
     };
-    haskell-nix.follows = "hsNix";
+    haskell-nix = {
+      url = "github:input-output-hk/haskell.nix/3b6056f3866f88d1d16eaeb2e810d3ac0df0e7cd";
+      inputs.nixpkgs.inputs.nixpkgs-unstable.follows = "nixpkgs";
+      inputs.hackage.follows = "hackage-nix";
+    };
     CHaP = {
       url = "github:input-output-hk/cardano-haskell-packages/251738d00d5799850c6eb610c4ab7b175b66224a";
       flake = false;
@@ -27,16 +31,12 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
-    hsNix = {
-      url = "github:input-output-hk/haskell.nix/3b6056f3866f88d1d16eaeb2e810d3ac0df0e7cd";
-      inputs.nixpkgs.inputs.nixpkgs-unstable.follows = "nixpkgs";
-      inputs.hackage.follows = "hackage-nix";
-    };
+
     cardano-node = {
       url = "github:input-output-hk/cardano-node/8.8.0-pre";
-  #    inputs.hackageNix.follows = "hackage-nix";
+      # inputs.hackageNix.follows = "hackage-nix";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.haskellNix.follows = "hsNix";
+      inputs.haskellNix.follows = "haskell-nix";
       inputs.hackageNix = 
         { url = "github:input-output-hk/hackage.nix/b65addc81b03406b3ee8b139549980591ed15be5";
           flake = false;
