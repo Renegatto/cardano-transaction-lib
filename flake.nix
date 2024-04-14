@@ -13,13 +13,9 @@
       url = "github:input-output-hk/hackage.nix";
       flake = false;
     };
-    haskell-nix = {
-      url = "github:input-output-hk/haskell.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.hackage.follows = "hackage-nix";
-    };
+    haskell-nix.follows = "hsNix";
     CHaP = {
-      url = "github:input-output-hk/cardano-haskell-packages?ref=repo";
+      url = "github:input-output-hk/cardano-haskell-packages/251738d00d5799850c6eb610c4ab7b175b66224a";
       flake = false;
     };
     iohk-nix = {
@@ -31,10 +27,25 @@
       url = "github:edolstra/flake-compat";
       flake = false;
     };
+    hsNix = {
+      url = "github:input-output-hk/haskell.nix/3b6056f3866f88d1d16eaeb2e810d3ac0df0e7cd";
+      inputs.nixpkgs.inputs.nixpkgs-unstable.follows = "nixpkgs";
+      inputs.hackage.follows = "hackage-nix";
+    };
+    cardano-node = {
+      url = "github:input-output-hk/cardano-node/8.8.0-pre";
+  #    inputs.hackageNix.follows = "hackage-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.haskellNix.follows = "hsNix";
+      inputs.hackageNix = 
+        { url = "github:input-output-hk/hackage.nix/b65addc81b03406b3ee8b139549980591ed15be5";
+          flake = false;
+        };
+      inputs.CHaP.follows = "CHaP";
+      inputs.iohkNix.url = "github:input-output-hk/iohk-nix/af551ca93d969d9715fa9bf86691d9a0a19e89d9";
+    };
 
-    cardano-node.url = "github:input-output-hk/cardano-node/8.8.0-pre";
-
-    ogmios-nixos.url = "github:Renegatto/ogmios-nixos/0c1449a2896f475ed921ba3ea92222145a67301f";
+    ogmios-nixos.url = "github:Fourierlabs/ogmios-nixos";
 
     ogmios.follows = "ogmios-nixos/ogmios";
 
@@ -52,7 +63,7 @@
     # NOTE(bladyjoker): Cardano configurations (yaml/json) often change format and break, that's why we pin to a specific known version.
     cardano-configurations = {
       # Override with "path:/path/to/cardano-configurations";
-      url = "github:input-output-hk/cardano-configurations?rev=d952529afdfdf6d53ce190b1bf8af990a7ae9590";
+      url = "github:input-output-hk/cardano-configurations?rev=0b98af1c65c10cf4c83d418d6a246d82e4684076";
       flake = false;
     };
     easy-purescript-nix = {
@@ -136,7 +147,9 @@
               echo "$path"
               json=$(cat "$path")
               md5=($(md5sum <<< "$json"))
-              printf "%s" "$json" > "ogmios/$command-$md5.json"
+              target="ogmios/$command-$md5.json"
+              echo "to $target"
+              printf "%s" "$json" > "$target"
             fi
           }
           export -f on_file
@@ -301,9 +314,9 @@
                 inherit (prev) system;
               in
               {
+                inherit (ogmios-nixos.packages.${system}) ogmios;
                 plutip-server =
                   (plutipServerFor system).hsPkgs.plutip-server.components.exes.plutip-server;
-                ogmios = ogmios-nixos.packages.${system}."ogmios:exe:ogmios";
                 kupo = inputs.kupo-nixos.packages.${system}.kupo;
                 cardano-db-sync = inputs.db-sync.packages.${system}.cardano-db-sync;
                 blockfrost-backend-ryo = inputs.blockfrost.packages.${system}.blockfrost-backend-ryo;
