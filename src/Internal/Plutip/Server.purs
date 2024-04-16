@@ -20,61 +20,25 @@ import Contract.Address (NetworkId(MainnetId))
 import Contract.Chain (waitNSlots)
 import Contract.Config (defaultSynchronizationParams, defaultTimeParams)
 import Contract.Monad (Contract, ContractEnv, liftContractM, runContractInEnv)
+import Contract.Prelude (log)
 import Control.Monad.Error.Class (liftEither, throwError)
 import Control.Monad.State (State, execState, modify_)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Writer (censor, execWriterT, tell)
 import Ctl.Internal.Affjax (request) as Affjax
 import Ctl.Internal.Contract.Hooks (emptyHooks)
-import Ctl.Internal.Contract.Monad
-  ( buildBackend
-  , getLedgerConstants
-  , mkQueryHandle
-  , stopContractEnv
-  )
+import Ctl.Internal.Contract.Monad (buildBackend, getLedgerConstants, mkQueryHandle, stopContractEnv)
 import Ctl.Internal.Contract.QueryBackend (mkCtlBackendParams)
 import Ctl.Internal.Helpers ((<</>>))
 import Ctl.Internal.Logging (Logger, mkLogger, setupLogs)
 import Ctl.Internal.Plutip.PortCheck (isPortAvailable)
-import Ctl.Internal.Plutip.Spawn
-  ( ManagedProcess
-  , NewOutputAction(Success, NoOp)
-  , OnSignalRef
-  , cleanupOnSigint
-  , cleanupTmpDir
-  , removeOnSignal
-  , spawn
-  , stop
-  )
-import Ctl.Internal.Plutip.Types
-  ( ClusterStartupParameters
-  , ClusterStartupRequest(ClusterStartupRequest)
-  , PlutipConfig
-  , PrivateKeyResponse(PrivateKeyResponse)
-  , StartClusterResponse(ClusterStartupSuccess, ClusterStartupFailure)
-  , StopClusterRequest(StopClusterRequest)
-  , StopClusterResponse
-  )
+import Ctl.Internal.Plutip.Spawn (ManagedProcess, NewOutputAction(Success, NoOp), OnSignalRef, cleanupOnSigint, cleanupTmpDir, removeOnSignal, spawn, stop)
+import Ctl.Internal.Plutip.Types (ClusterStartupParameters, ClusterStartupRequest(ClusterStartupRequest), PlutipConfig, PrivateKeyResponse(PrivateKeyResponse), StartClusterResponse(ClusterStartupSuccess, ClusterStartupFailure), StopClusterRequest(StopClusterRequest), StopClusterResponse)
 import Ctl.Internal.Plutip.Utils (tmpdir)
-import Ctl.Internal.Service.Error
-  ( ClientError(ClientDecodeJsonError, ClientHttpError)
-  , pprintClientError
-  )
-import Ctl.Internal.Test.ContractTest
-  ( ContractTest(ContractTest)
-  , ContractTestPlan(ContractTestPlan)
-  , ContractTestPlanHandler
-  )
+import Ctl.Internal.Service.Error (ClientError(ClientDecodeJsonError, ClientHttpError), pprintClientError)
+import Ctl.Internal.Test.ContractTest (ContractTest(ContractTest), ContractTestPlan(ContractTestPlan), ContractTestPlanHandler)
 import Ctl.Internal.Test.TestPlanM (TestPlanM)
-import Ctl.Internal.Test.UtxoDistribution
-  ( class UtxoDistribution
-  , InitialUTxODistribution
-  , InitialUTxOs
-  , decodeWallets
-  , encodeDistribution
-  , keyWallets
-  , transferFundsFromEnterpriseToBase
-  )
+import Ctl.Internal.Test.UtxoDistribution (class UtxoDistribution, InitialUTxODistribution, InitialUTxOs, decodeWallets, encodeDistribution, keyWallets, transferFundsFromEnterpriseToBase)
 import Ctl.Internal.Types.UsedTxOuts (newUsedTxOuts)
 import Ctl.Internal.Wallet.Key (PrivatePaymentKey(PrivatePaymentKey))
 import Data.Array as Array
@@ -94,15 +58,11 @@ import Data.Tuple (fst, snd)
 import Data.Tuple.Nested (type (/\), (/\))
 import Data.UInt (UInt)
 import Data.UInt as UInt
+import Debug (traceM)
 import Effect.Aff (Aff, Milliseconds(Milliseconds), try)
 import Effect.Aff (bracket) as Aff
 import Effect.Aff.Class (liftAff)
-import Effect.Aff.Retry
-  ( RetryPolicy
-  , constantDelay
-  , limitRetriesByCumulativeDelay
-  , recovering
-  )
+import Effect.Aff.Retry (RetryPolicy, constantDelay, limitRetriesByCumulativeDelay, recovering)
 import Effect.Class (liftEffect)
 import Effect.Exception (error, message, throw)
 import Effect.Ref (Ref)
@@ -444,6 +404,7 @@ startPlutipCluster cfg keysToGenerate = do
     -- rewards, see https://github.com/mlabs-haskell/plutip/issues/149
     epochSize = fromMaybe (UInt.fromInt 80) cfg.clusterConfig.epochSize
   res <- do
+    log "Starting plutip cluster"
     response <- liftAff
       ( Affjax.request
           Affjax.defaultRequest
@@ -464,6 +425,8 @@ startPlutipCluster cfg keysToGenerate = do
             , method = Left Method.POST
             }
       )
+    log "Started plutip cluster"
+    traceM {response}
     pure $ response # either
       (Left <<< ClientHttpError)
       \{ body } -> lmap (ClientDecodeJsonError body)

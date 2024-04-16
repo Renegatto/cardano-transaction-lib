@@ -51,7 +51,6 @@ main = interruptOnSignal SIGINT =<< launchAff do
     Utils.interpretWithConfig
       defaultConfig { timeout = Just $ Milliseconds 70_000.0, exit = true }
       -- TODO enable Test.Ctl.Plutip tests
-      $ skip
       $ group "Plutip" do
           testPlutipContracts config Mnemonics.suite
           group "ExUnits - normal limits" do
