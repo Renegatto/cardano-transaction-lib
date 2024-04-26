@@ -609,15 +609,14 @@ utxosAt address = runExceptT $
   ExceptT (utxosAtAddressOnPage 1)
     >>= (ExceptT <<< resolveBlockfrostUtxosAtAddress)
   where
+  -- TODO: Simplify using 'withBlockfrostPages'
   utxosAtAddressOnPage
     :: Int -> BlockfrostServiceM (Either ClientError BlockfrostUtxosAtAddress)
   utxosAtAddressOnPage page = runExceptT do
-    -- Maximum number of results per page supported by Blockfrost:
-    let maxNumResultsOnPage = 100
     utxos <- ExceptT $
-      blockfrostGetRequest (UtxosAtAddress address page maxNumResultsOnPage)
+      blockfrostGetRequest (UtxosAtAddress address page maxResultsOnPage)
         <#> handle404AsMempty <<< handleBlockfrostResponse
-    case Array.length (unwrap utxos) < maxNumResultsOnPage of
+    case Array.length (unwrap utxos) < maxResultsOnPage of
       true -> pure utxos
       false -> append utxos <$> ExceptT (utxosAtAddressOnPage $ page + 1)
 
@@ -814,6 +813,7 @@ getPoolIds :: BlockfrostServiceM (Either ClientError (Array PoolPubKeyHash))
 getPoolIds = runExceptT do
   ExceptT (poolsOnPage 1)
   where
+  -- TODO: Simplify using 'withBlockfrostPages'
   poolsOnPage
     :: Int -> BlockfrostServiceM (Either ClientError (Array PoolPubKeyHash))
   poolsOnPage page = runExceptT do
