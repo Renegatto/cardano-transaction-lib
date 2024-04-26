@@ -17,6 +17,7 @@ module Ctl.Internal.Service.Blockfrost
       , Transaction
       , TransactionMetadata
       , UtxosAtAddress
+      , UtxosWithAssetAtAddress
       , UtxosOfTransaction
       , PoolIds
       , PoolParameters
@@ -56,6 +57,7 @@ module Ctl.Internal.Service.Blockfrost
   , runBlockfrostServiceTestM
   , submitTx
   , utxosAt
+  , utxosWithAssetAt
   ) where
 
 import Prelude
@@ -137,6 +139,10 @@ import Ctl.Internal.Deserialization.PlutusData (deserializeData)
 import Ctl.Internal.Deserialization.Transaction
   ( convertGeneralTransactionMetadata
   )
+import Ctl.Internal.Plutus.Types.CurrencySymbol
+  ( CurrencySymbol
+  , getCurrencySymbol
+  )
 import Ctl.Internal.QueryM.Ogmios
   ( AdditionalUtxoSet
   , ExecutionUnits
@@ -214,6 +220,7 @@ import Ctl.Internal.Types.Scripts
   , plutusV2Script
   )
 import Ctl.Internal.Types.SystemStart (SystemStart(SystemStart))
+import Ctl.Internal.Types.TokenName (TokenName, getTokenName)
 import Ctl.Internal.Types.Transaction
   ( TransactionHash
   , TransactionInput(TransactionInput)
@@ -353,6 +360,8 @@ data BlockfrostEndpoint
   | TransactionMetadata TransactionHash
   -- /addresses/{address}/utxos?page={page}&count={count}
   | UtxosAtAddress Address Int Int
+  -- /addresses/{address}/utxos/{asset}?page={page}&count={count}
+  | UtxosWithAssetAtAddress Address CurrencySymbol TokenName Int Int
   -- /txs/{hash}/utxos
   | UtxosOfTransaction TransactionHash
   -- /pools?page={page}&count={count}&order=asc
@@ -401,6 +410,19 @@ realizeEndpoint endpoint =
     UtxosAtAddress address page count ->
       "/addresses/" <> addressBech32 address <> "/utxos?page=" <> show page
         <> ("&count=" <> show count)
+    UtxosWithAssetAtAddress address cs tn page count ->
+      let
+        tnHash = byteArrayToHex $ getTokenName tn
+        csHash = byteArrayToHex $ getCurrencySymbol cs
+        asset = csHash <> tnHash
+      in
+        "/addresses/" <> addressBech32 address
+          <> "/utxos/"
+          <> asset
+          <> "?page="
+          <> show page
+          <> "&count="
+          <> show count
     UtxosOfTransaction txHash ->
       "/txs/" <> byteArrayToHex (unwrap txHash) <> "/utxos"
     PoolIds page count ->
@@ -409,6 +431,19 @@ realizeEndpoint endpoint =
       "/pool/" <> poolPubKeyHashToBech32 poolPubKeyHash
     DelegationsAndRewards credential ->
       "/accounts/" <> blockfrostStakeCredentialToBech32 credential
+
+maxResultsOnPage :: Int
+maxResultsOnPage = 100 -- blockfrost constant
+
+withBlockfrostPages
+  :: forall m a
+   . Monad m
+  => { query :: Int -> m (Array a), page :: Int }
+  -> m (Array a)
+withBlockfrostPages { query, page } = do
+  results <- query page
+  if Array.length results < maxResultsOnPage then pure results
+  else append results <$> withBlockfrostPages { query, page: page + 1 }
 
 blockfrostGetRequest
   :: BlockfrostEndpoint
@@ -545,6 +580,29 @@ handle404AsMempty = map (fromMaybe mempty) <<< handle404AsNothing
 --------------------------------------------------------------------------------
 -- Get utxos at address / by output reference
 --------------------------------------------------------------------------------
+
+utxosWithAssetAt
+  :: Address
+  -> CurrencySymbol
+  -> TokenName
+  -> BlockfrostServiceM (Either ClientError UtxoMap)
+utxosWithAssetAt address cs tn = runExceptT $
+  ExceptT utxosWithAssetAtAddress
+    >>= resolveBlockfrostUtxosWithAssetAtAddress
+      >>> ExceptT
+  where
+  utxosWithAssetAtAddress
+    :: BlockfrostServiceM (Either ClientError BlockfrostUtxosAtAddress)
+  utxosWithAssetAtAddress = map BlockfrostUtxosAtAddress <$> runExceptT do
+    withBlockfrostPages
+      { page: 1
+      , query: \page -> ExceptT $
+          blockfrostGetRequest
+            (UtxosWithAssetAtAddress address cs tn page maxResultsOnPage)
+            <#> map (unwrap :: BlockfrostUtxosAtAddress -> _)
+              <<< handle404AsMempty
+              <<< handleBlockfrostResponse
+      }
 
 utxosAt :: Address -> BlockfrostServiceM (Either ClientError UtxoMap)
 utxosAt address = runExceptT $
@@ -759,7 +817,6 @@ getPoolIds = runExceptT do
   poolsOnPage
     :: Int -> BlockfrostServiceM (Either ClientError (Array PoolPubKeyHash))
   poolsOnPage page = runExceptT do
-    let maxResultsOnPage = 100 -- blockfrost constant
     poolIds <- ExceptT $
       blockfrostGetRequest (PoolIds page maxResultsOnPage)
         <#> handle404AsMempty <<< handleBlockfrostResponse
@@ -1095,6 +1152,21 @@ resolveBlockfrostUtxosAtAddress
   :: BlockfrostUtxosAtAddress
   -> BlockfrostServiceM (Either ClientError UtxoMap)
 resolveBlockfrostUtxosAtAddress (BlockfrostUtxosAtAddress utxos) =
+  -- TODO: `Parallel` instance for `BlockfrostServiceM`?
+  LoggerT \logger ->
+    let
+      resolve
+        :: BlockfrostTransactionOutput
+        -> ExceptT ClientError (ReaderT BlockfrostServiceParams Aff)
+             TransactionOutput
+      resolve = ExceptT <<< flip runLoggerT logger <<< resolveBlockfrostTxOutput
+    in
+      runExceptT $ Map.fromFoldable <$> parTraverse (traverse resolve) utxos
+
+resolveBlockfrostUtxosWithAssetAtAddress
+  :: BlockfrostUtxosAtAddress
+  -> BlockfrostServiceM (Either ClientError UtxoMap)
+resolveBlockfrostUtxosWithAssetAtAddress (BlockfrostUtxosAtAddress utxos) =
   -- TODO: `Parallel` instance for `BlockfrostServiceM`?
   LoggerT \logger ->
     let
