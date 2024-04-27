@@ -66,6 +66,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) 
 
 ### Added
 
+- `utxoWithAssetAt` - Blockfrost-specific query that allows to query only UTxOs that have specific asset class.
+
 ### Changed
 
 ### Fixed
