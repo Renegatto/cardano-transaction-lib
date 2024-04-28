@@ -412,11 +412,14 @@ realizeEndpoint endpoint =
     TransactionMetadata txHash ->
       "/txs/" <> byteArrayToHex (unwrap txHash) <> "/metadata/cbor"
     UtxosAtAddress address page count ->
-      "/addresses/" <> addressBech32 address <> "/utxos?" <> filterPaged page count
+      "/addresses/" <> addressBech32 address <> "/utxos?" <> filterPaged page
+        count
     UtxosWithAssetAtAddress address cs tn page count ->
-        "/addresses/" <> addressBech32 address
-          <> "/utxos/" <> asset cs tn
-          <> "?" <> filterPaged page count
+      "/addresses/" <> addressBech32 address
+        <> "/utxos/"
+        <> asset cs tn
+        <> "?"
+        <> filterPaged page count
     AssetAddresses cs tn page count ->
       "/assets/" <> asset cs tn <> "/addresses?" <> filterPaged page count
     UtxosOfTransaction txHash ->
@@ -428,13 +431,14 @@ realizeEndpoint endpoint =
     DelegationsAndRewards credential ->
       "/accounts/" <> blockfrostStakeCredentialToBech32 credential
   where
-    asset cs tn =
-      let
-        tnHash = byteArrayToHex $ getTokenName tn
-        csHash = byteArrayToHex $ getCurrencySymbol cs
-      in csHash <> tnHash
-    filterPaged page count =
-      "page=" <> show page <> "&count=" <> show count
+  asset cs tn =
+    let
+      tnHash = byteArrayToHex $ getTokenName tn
+      csHash = byteArrayToHex $ getCurrencySymbol cs
+    in
+      csHash <> tnHash
+  filterPaged page count =
+    "page=" <> show page <> "&count=" <> show count
 
 maxResultsOnPage :: Int
 maxResultsOnPage = 100 -- blockfrost constant
@@ -630,16 +634,17 @@ assetAddresses
   -> BlockfrostServiceM (Either ClientError (Map Address BigInt))
 assetAddresses cs tn =
   runExceptT
-  $ resolveBlockfrostAssetAddresses
-  <<< BlockfrostAssetAddresses
-  <$> withBlockfrostPages
-      { page: 1
-      , query: \page -> ExceptT $
-          blockfrostGetRequest
-            (AssetAddresses cs tn page maxResultsOnPage)
-            <#> handle404AsMempty
-              <<< handleBlockfrostResponse
-      }
+    $
+      resolveBlockfrostAssetAddresses
+        <<< BlockfrostAssetAddresses
+        <$> withBlockfrostPages
+          { page: 1
+          , query: \page -> ExceptT $
+              blockfrostGetRequest
+                (AssetAddresses cs tn page maxResultsOnPage)
+                <#> handle404AsMempty
+                  <<< handleBlockfrostResponse
+          }
 
 getUtxoByOref
   :: TransactionInput
@@ -1195,19 +1200,21 @@ newtype BlockfrostAssetAddress = BlockfrostAssetAddress
   { address :: Address
   , quantity :: BigInt
   }
+
 derive instance Newtype BlockfrostAssetAddress _
 derive instance Generic BlockfrostAssetAddress _
 instance DecodeAeson BlockfrostAssetAddress where
   decodeAeson = aesonObject \obj -> ado
     address <- decodeAddress obj
     quantity <- decodeQuantity obj
-    in BlockfrostAssetAddress {address,quantity}
+    in BlockfrostAssetAddress { address, quantity }
     where
     decodeAddress :: Object Aeson -> Either JsonDecodeError Address
     decodeAddress obj =
       getField obj "address" >>= \address ->
         note (TypeMismatch "Expected bech32 encoded address")
           (addressFromBech32 address)
+
     decodeQuantity :: Object Aeson -> Either JsonDecodeError BigInt
     decodeQuantity obj =
       getField obj "quantity" >>= \address ->
