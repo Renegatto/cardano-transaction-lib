@@ -21,7 +21,7 @@ import Contract.Monad
   , liftContractM
   , throwContractError
   )
-import Contract.Prelude (log, unwrap, (/\))
+import Contract.Prelude (unwrap, (/\))
 import Contract.ScriptLookups as Lookups
 import Contract.Scripts (MintingPolicy)
 import Contract.Test
@@ -43,8 +43,7 @@ import Contract.Value
   )
 import Contract.Value as Value
 import Contract.Wallet
-  ( getWalletAddresses
-  , getWalletAddressesWithNetworkTag
+  ( getWalletAddressesWithNetworkTag
   , getWalletUtxos
   )
 import Control.Bind (bindFlipped)
@@ -215,7 +214,6 @@ mintTestAssets mkMp tn amount = do
     lookups =
       Lookups.mintingPolicy oneShotMp
         <> Lookups.unspentOutputs utxos
-  log <<< show =<< getWalletAddresses
   txHash <- submitTxFromConstraints lookups constraints
   awaitTxConfirmed txHash
   pure cs
