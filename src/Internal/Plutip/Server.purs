@@ -7,6 +7,11 @@ module Ctl.Internal.Plutip.Server
   , checkPlutipServer
   , stopChildProcessWithPort
   , testPlutipContracts
+  , execDistribution
+  , runCleanup
+  , startPlutipContractEnv
+  , stopChildProcessWithPortAndRemoveOnSignal
+  , whenError
   ) where
 
 import Prelude
@@ -56,6 +61,7 @@ import Ctl.Internal.Plutip.Types
   , StopClusterResponse
   )
 import Ctl.Internal.Plutip.Utils (tmpdir)
+import Ctl.Internal.QueryM.UniqueId (uniqueId)
 import Ctl.Internal.Service.Error
   ( ClientError(ClientDecodeJsonError, ClientHttpError)
   , pprintClientError
@@ -140,7 +146,9 @@ withPlutipContractEnv
 withPlutipContractEnv plutipCfg distr cont = do
   cleanupRef <- liftEffect $ Ref.new mempty
   Aff.bracket
-    (try $ startPlutipContractEnv plutipCfg distr cleanupRef)
+    ( try $ startPlutipContractEnv plutipCfg distr (const $ pure unit)
+        cleanupRef
+    )
     (const $ runCleanup cleanupRef)
     $ liftEither >=> \{ env, wallets, printLogs } ->
         whenError printLogs (cont env wallets)
@@ -163,7 +171,8 @@ testPlutipContracts plutipCfg tp = do
     cleanupRef <- liftEffect $ Ref.new mempty
     -- Sets a single Mote bracket at the top level, it will be run for all
     -- immediate tests and groups
-    bracket (startPlutipContractEnv plutipCfg distr cleanupRef)
+    bracket
+      (startPlutipContractEnv plutipCfg distr (const $ pure unit) cleanupRef)
       (runCleanup cleanupRef)
       $ flip mapTest tests \test { env, wallets, printLogs, clearLogs } -> do
           whenError printLogs (runContractInEnv env (test wallets))
@@ -252,6 +261,8 @@ execDistribution (MoteT mote) = execWriterT mote <#> go
   emptyContractTestPlan :: ContractTestPlan
   emptyContractTestPlan = ContractTestPlan \h -> h unit (pure unit)
 
+type Refs = Ref (Array (Aff Unit))
+
 -- | Provide a `ContractEnv` connected to Plutip.
 -- | Can be used to run multiple `Contract`s using `runContractInEnv`.
 -- | Resources which are allocated in the `Aff` computation must be de-allocated
@@ -264,20 +275,24 @@ startPlutipContractEnv
    . UtxoDistribution distr wallets
   => PlutipConfig
   -> distr
-  -> Ref (Array (Aff Unit))
+  -> (Refs -> Aff Unit)
+  -> Refs
   -> Aff
        { env :: ContractEnv
        , wallets :: wallets
        , printLogs :: Aff Unit
        , clearLogs :: Aff Unit
        }
-startPlutipContractEnv plutipCfg distr cleanupRef = do
+startPlutipContractEnv plutipCfg distr hooks cleanupRef = do
   configCheck plutipCfg
   tryWithReport startPlutipServer' "Could not start Plutip server"
   (ourKey /\ response) <- tryWithReport startPlutipCluster'
     "Could not start Plutip cluster"
   tryWithReport (startOgmios' response) "Could not start Ogmios"
   tryWithReport (startKupo' response) "Could not start Kupo"
+
+  hooks cleanupRef
+
   { env, printLogs, clearLogs } <- mkContractEnv'
   wallets <- mkWallets' env ourKey response
   pure
@@ -545,8 +560,9 @@ startKupo
   -> Aff (ManagedProcess /\ String /\ OnSignalRef)
 startKupo cfg params = do
   tmpDir <- liftEffect tmpdir
+  randomStr ← liftEffect $ uniqueId ""
   let
-    workdir = tmpDir <</>> "kupo-db"
+    workdir = tmpDir <</>> (randomStr <> "-kupo-db")
     testClusterDir = (dirname <<< dirname) params.nodeConfigPath
   liftEffect do
     workdirExists <- FSSync.exists workdir

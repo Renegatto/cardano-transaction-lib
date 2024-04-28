@@ -60,6 +60,7 @@ module Ctl.Internal.Service.Blockfrost
   , utxosAt
   , utxosWithAssetAt
   , assetAddresses
+  , utxosAtScriptHash
   ) where
 
 import Prelude
@@ -645,6 +646,10 @@ assetAddresses cs tn =
                 <#> handle404AsMempty
                   <<< handleBlockfrostResponse
           }
+
+utxosAtScriptHash
+  :: ScriptHash -> BlockfrostServiceM (Either ClientError UtxoMap)
+utxosAtScriptHash _address = pure (Left $ ClientOtherError "Not Implemented")
 
 getUtxoByOref
   :: TransactionInput
@@ -1710,3 +1715,4 @@ instance DecodeAeson BlockfrostRewards where
       { pool_id
       , withdrawable_amount
       }
+

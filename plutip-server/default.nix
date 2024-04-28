@@ -35,7 +35,7 @@ pkgs.haskell-nix.cabalProject {
     withHoogle = true;
     exactDeps = true;
 
-    tools.haskell-language-server = "1.5.0.0"; # Newer versions failed to build
+    # tools.haskell-language-server = "1.5.0.0"; # Newer versions failed to build
 
     nativeBuildInputs = with pkgs; [
       # Haskell Tools
