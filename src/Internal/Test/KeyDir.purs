@@ -1,5 +1,13 @@
 module Ctl.Internal.Test.KeyDir
-  ( runContractTestsWithKeyDir
+  ( backupWallets
+  , fundWallets
+  , markAsInactive
+  , mustPayToKeyWallet
+  , restoreWallets
+  , returnFunds
+  , returnFundsRetryPolicy
+  , runContractTestsWithKeyDir
+  , showLovelace
   ) where
 
 import Prelude
