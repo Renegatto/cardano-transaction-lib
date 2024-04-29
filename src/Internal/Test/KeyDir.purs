@@ -9,8 +9,7 @@ module Ctl.Internal.Test.KeyDir
   , returnFundsRetryPolicy
   , runContractTestsWithKeyDir
   , showLovelace
-  )
-  where
+  ) where
 
 import Prelude
 
